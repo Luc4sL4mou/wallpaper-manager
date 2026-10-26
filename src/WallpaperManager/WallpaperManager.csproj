@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WallpaperManager</RootNamespace>
+    <AssemblyName>WallpaperManager</AssemblyName>
+    <!-- O manifesto declara PerMonitorV2: o app passa a enxergar os pixels reais de cada monitor -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Ícone embutido no .exe (aparece no Explorer, na barra de tarefas e no atalho) -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Controles e tema Fluent do Windows 11 (Mica, cartões, ícones) -->
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Também como recurso WPF, para a janela e a barra de título usarem o mesmo ícone -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,901 @@
+<ui:FluentWindow x:Class="WallpaperManager.Views.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:converters="clr-namespace:WallpaperManager.Views.Converters"
+                 Title="Wallpaper Manager"
+                 Icon="pack://application:,,,/Assets/app.ico"
+                 Width="1000" Height="690" MinWidth="720" MinHeight="520"
+                 WindowStartupLocation="CenterScreen"
+                 WindowState="Maximized"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <converters:PathToThumbnailConverter x:Key="Thumbnail" />
+
+        <!-- Bloco de monitor no mapa: mostra o papel atual; borda na cor de destaque quando selecionado -->
+        <Style x:Key="MonitorTileStyle" TargetType="ListBoxItem">
+            <Setter Property="Canvas.Left" Value="{Binding TileLeft}" />
+            <Setter Property="Canvas.Top" Value="{Binding TileTop}" />
+            <Setter Property="Width" Value="{Binding TileWidth}" />
+            <Setter Property="Height" Value="{Binding TileHeight}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Tile" Margin="4" CornerRadius="10" BorderThickness="3"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Cartão do catálogo: miniatura com borda na cor de destaque quando selecionado -->
+        <Style x:Key="CatalogTileStyle" TargetType="ListBoxItem">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Tile" Margin="4" Padding="3" CornerRadius="10" BorderThickness="2"
+                                Background="Transparent"
+                                BorderBrush="Transparent">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Caixinha de marcação das miniaturas: quadrado arredondado; marcada = cor de destaque com "✓" branco.
+             Desabilitada (pasta inteira ou apresentação rodando) fica mais apagada, mas continua legível. -->
+        <Style x:Key="TileCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid x:Name="Root" Width="26" Height="26" Background="Transparent" SnapsToDevicePixels="True">
+                            <Border x:Name="Box" CornerRadius="7" BorderThickness="2"
+                                    BorderBrush="#E6FFFFFF" Background="#99000000" />
+                            <Path x:Name="Tick" Visibility="Collapsed" Stroke="White" StrokeThickness="2.6"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Data="M 7,13.5 L 11.5,18 L 19.5,8.5" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="#CC000000" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.7" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Barra de título do Windows 11 (substitui a padrão) -->
+        <ui:TitleBar Grid.Row="0" Title="Wallpaper Manager">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/Assets/app.ico" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <TabControl Grid.Row="1" Padding="0" SelectedIndex="{Binding SelectedTabIndex}">
+
+        <TabItem Header="Monitores">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="36,8,36,28" MaxWidth="1100">
+
+                <!-- Cabeçalho -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ui:TextBlock FontTypography="Title" Text="Monitores" />
+                        <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="Clique em um monitor para ver os detalhes. A lista se atualiza sozinha quando uma tela é conectada, desconectada ou muda de resolução." />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Top" Orientation="Horizontal">
+                        <ui:Button Margin="0,0,8,0" Content="Restaurar todos" Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                   ToolTip="Reaplica o último papel que este app aplicou em cada monitor"
+                                   Command="{Binding RestoreAllCommand}" />
+                        <ui:Button Content="Atualizar" Icon="{ui:SymbolIcon ArrowSync24}"
+                                   Command="{Binding RefreshCommand}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Mapa dos monitores, na posição real -->
+                <ui:Card Margin="0,20,0,0" Padding="16,24">
+                    <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
+                        <ListBox ItemsSource="{Binding Monitors}"
+                                 SelectedItem="{Binding SelectedMonitor}"
+                                 Width="{Binding MapWidth}" Height="{Binding MapHeight}"
+                                 ItemContainerStyle="{StaticResource MonitorTileStyle}">
+                            <!-- Template mínimo: sem borda nem barras de rolagem -->
+                            <ListBox.Template>
+                                <ControlTemplate TargetType="ListBox">
+                                    <ItemsPresenter />
+                                </ControlTemplate>
+                            </ListBox.Template>
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <!-- Miniatura do papel atual, preenchendo o bloco como o modo Preencher faz na tela -->
+                                        <Border CornerRadius="7">
+                                            <Border.Background>
+                                                <ImageBrush Stretch="UniformToFill"
+                                                            ImageSource="{Binding CurrentWallpaperPath, Converter={StaticResource Thumbnail}}" />
+                                            </Border.Background>
+                                        </Border>
+                                        <!-- Etiqueta escura por cima, legível sobre qualquer imagem -->
+                                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="8">
+                                            <Border Background="#B0000000" CornerRadius="8" Padding="14,6">
+                                                <StackPanel>
+                                                    <TextBlock HorizontalAlignment="Center" FontSize="30" FontWeight="SemiBold"
+                                                               Foreground="White" Text="{Binding Number}" />
+                                                    <TextBlock HorizontalAlignment="Center" FontSize="12"
+                                                               Foreground="White" Text="{Binding Info.ResolutionText}" />
+                                                    <TextBlock HorizontalAlignment="Center" FontSize="11" Margin="0,2,0,0"
+                                                               Foreground="White" Text="★ Principal"
+                                                               Visibility="{Binding Info.IsPrimary, Converter={StaticResource BoolToVisibility}}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Viewbox>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Viewbox>
+                </ui:Card>
+
+                <!-- Detalhes do monitor selecionado -->
+                <StackPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                    <ui:TextBlock Margin="0,28,0,10" FontTypography="Subtitle">
+                        <Run Text="Monitor" />
+                        <Run Text="{Binding SelectedMonitor.Number, Mode=OneWay}" />
+                        <Run Text="·" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <Run Text="{Binding SelectedMonitor.Info.MonitorName, Mode=OneWay}"
+                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </ui:TextBlock>
+
+                    <!-- Aviso se o IDesktopWallpaper não conhece este monitor -->
+                    <ui:InfoBar Margin="0,0,0,8" Severity="Warning" IsClosable="False"
+                                Title="Monitor não reconhecido pelo Windows"
+                                Message="O IDesktopWallpaper não encontrou este ID, então não é possível aplicar papel de parede aqui. Clique em Atualizar."
+                                IsOpen="{Binding SelectedMonitor.IsNotRecognizedByWindows, Mode=OneWay}" />
+
+                    <!-- Papel atual × imagem para aplicar -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ui:Card Grid.Column="0" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Papel de parede atual" />
+                                <Border Margin="0,10,0,8" Height="130" CornerRadius="6"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}">
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding SelectedMonitor.CurrentWallpaperPath, Converter={StaticResource Thumbnail}}" />
+                                </Border>
+                                <ui:TextBlock TextTrimming="CharacterEllipsis"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Text="{Binding SelectedMonitor.CurrentWallpaperText}"
+                                              ToolTip="{Binding SelectedMonitor.CurrentWallpaperText}" />
+                            </StackPanel>
+                        </ui:Card>
+
+                        <ui:Card Grid.Column="2" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Imagem para aplicar" />
+                                <Border Margin="0,10,0,8" Height="130" CornerRadius="6"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}">
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding SelectedImagePath, Converter={StaticResource Thumbnail}}" />
+                                </Border>
+                                <ui:TextBlock TextTrimming="CharacterEllipsis"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Text="{Binding SelectedImageInfo}"
+                                              ToolTip="{Binding SelectedImagePath}" />
+                                <WrapPanel Margin="0,12,0,0">
+                                    <ui:Button Margin="0,0,8,4" Content="Escolher imagem…"
+                                               Icon="{ui:SymbolIcon FolderOpen24}"
+                                               Command="{Binding ChooseImageCommand}" />
+                                    <ui:Button Margin="0,0,8,4" Appearance="Primary" Content="Aplicar neste monitor"
+                                               Icon="{ui:SymbolIcon Checkmark24}"
+                                               Command="{Binding ApplyWallpaperCommand}" />
+                                    <ui:ProgressRing Width="24" Height="24" IsIndeterminate="True" VerticalAlignment="Center"
+                                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ui:Card>
+                    </Grid>
+
+                    <!-- Último papel que ESTE app aplicou (guardado nas configurações) -->
+                    <ui:CardControl Margin="0,0,0,12" Icon="{ui:SymbolIcon History24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Último papel aplicado por este app" />
+                                <ui:TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Text="{Binding SelectedMonitor.LastWallpaperText}" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:Button Content="Reaplicar" Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                   Command="{Binding ReapplyLastCommand}" />
+                    </ui:CardControl>
+
+                    <!-- Apresentação de slides deste monitor (configurada na aba Pasta local) -->
+                    <ui:CardControl Margin="0,0,0,12" Icon="{ui:SymbolIcon SlideLayout24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Apresentação de slides deste monitor" />
+                                <ui:TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Text="{Binding SelectedMonitor.Slideshow.StatusText}" />
+                                <ui:TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                              Text="{Binding SelectedMonitor.Slideshow.CurrentFile}" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:Button Content="Parar" Icon="{ui:SymbolIcon Stop24}"
+                                   Command="{Binding SelectedMonitor.Slideshow.StopCommand}" />
+                    </ui:CardControl>
+
+                    <ui:Button Margin="0,0,0,12" Content="Buscar papéis para este monitor no Wallhaven"
+                               Icon="{ui:SymbolIcon ImageSearch24}"
+                               Command="{Binding OpenCatalogCommand}" />
+
+                    <ui:CardControl Margin="0,0,0,4" Icon="{ui:SymbolIcon Resize24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Resolução" />
+                                <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Pixels físicos reais (independe da escala)" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:TextBlock FontTypography="BodyStrong" Text="{Binding SelectedMonitor.Info.ResolutionText}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl Margin="0,0,0,4" Icon="{ui:SymbolIcon RatioOneToOne24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Proporção" />
+                                <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Largura ÷ altura; usada para filtrar papéis de parede" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:TextBlock FontTypography="BodyStrong" Text="{Binding SelectedMonitor.Info.AspectRatioText}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl Margin="0,0,0,4" Icon="{ui:SymbolIcon ArrowMove24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Posição" />
+                                <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Canto superior esquerdo no desktop virtual" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:TextBlock FontTypography="BodyStrong" Text="{Binding SelectedMonitor.Info.PositionText}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl Margin="0,0,0,4" Icon="{ui:SymbolIcon ZoomIn24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="Escala" />
+                                <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                    <Run Text="Configurada no Windows · Saída" />
+                                    <Run Text="{Binding SelectedMonitor.Info.DisplayName, Mode=OneWay}" />
+                                </ui:TextBlock>
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:TextBlock FontTypography="BodyStrong" Text="{Binding SelectedMonitor.Info.ScaleText}" />
+                    </ui:CardControl>
+
+                    <ui:CardControl Margin="0,0,0,4" Icon="{ui:SymbolIcon Desktop24}">
+                        <ui:CardControl.Header>
+                            <StackPanel>
+                                <ui:TextBlock FontTypography="BodyStrong" Text="ID do dispositivo" />
+                                <!-- TextBox somente leitura: permite selecionar o texto -->
+                                <TextBox Margin="0,4,0,0" Padding="0" IsReadOnly="True" BorderThickness="0"
+                                         Background="Transparent" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                         Text="{Binding SelectedMonitor.Info.DeviceId, Mode=OneWay}" />
+                            </StackPanel>
+                        </ui:CardControl.Header>
+                        <ui:Button Margin="12,0,0,0" Content="Copiar" Icon="{ui:SymbolIcon Copy24}"
+                                   Command="{Binding CopyDeviceIdCommand}" />
+                    </ui:CardControl>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Catálogo Wallhaven">
+            <Grid Margin="36,8,36,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Cabeçalho: título e escolha do monitor -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ui:TextBlock FontTypography="Title" Text="Catálogo" />
+                        <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="Só aparecem papéis compatíveis com o monitor escolhido: mesma proporção (tolerância de 1%) e resolução igual ou maior." />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Top" MinWidth="230"
+                              ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock>
+                                    <Run Text="Monitor" />
+                                    <Run Text="{Binding Number, Mode=OneWay}" />
+                                    <Run Text="·" />
+                                    <Run Text="{Binding Info.ResolutionText, Mode=OneWay}" />
+                                </TextBlock>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- Filtros -->
+                <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                    <WrapPanel>
+                        <ComboBox Margin="0,0,16,6" MinWidth="190" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Catalog.SortOptions}" SelectedItem="{Binding Catalog.SelectedSort}"
+                                  DisplayMemberPath="Label" />
+                        <CheckBox Margin="0,0,16,6" Content="Geral" IsChecked="{Binding Catalog.IncludeGeneral}" />
+                        <CheckBox Margin="0,0,16,6" Content="Anime" IsChecked="{Binding Catalog.IncludeAnime}" />
+                        <CheckBox Margin="0,0,16,6" Content="Pessoas" IsChecked="{Binding Catalog.IncludePeople}" />
+                        <ui:Button Margin="0,0,0,6" Content="Buscar de novo" Icon="{ui:SymbolIcon ArrowSync24}"
+                                   Command="{Binding Catalog.SearchCommand}" />
+                    </WrapPanel>
+                    <ui:TextBlock TextWrapping="Wrap" FontSize="12"
+                                  Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                  Text="{Binding Catalog.FilterSummary}" />
+                    <ui:TextBlock Margin="0,2,0,0" FontSize="12"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="{Binding Catalog.Summary}" />
+                </StackPanel>
+
+                <!-- Erro da busca -->
+                <ui:InfoBar Grid.Row="2" Margin="0,8,0,0" Severity="Error" IsClosable="False"
+                            Title="Não foi possível carregar o catálogo"
+                            Message="{Binding Catalog.ErrorMessage}"
+                            IsOpen="{Binding Catalog.HasError, Mode=OneWay}" />
+
+                <!-- Miniaturas (esta lista é quem rola, então não há rolagem dentro de rolagem) -->
+                <Grid Grid.Row="3" Margin="0,8,0,0">
+                    <ListBox ItemsSource="{Binding Catalog.Items}"
+                             SelectedItem="{Binding Catalog.SelectedItem}"
+                             ItemContainerStyle="{StaticResource CatalogTileStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             BorderThickness="0" Background="Transparent">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="204" Height="130">
+                                    <!-- Cinza enquanto a miniatura baixa; o ImageBrush respeita os cantos arredondados -->
+                                    <Border CornerRadius="7" Background="{DynamicResource ControlFillColorDefaultBrush}">
+                                        <Border CornerRadius="7">
+                                            <Border.Background>
+                                                <ImageBrush Stretch="UniformToFill" ImageSource="{Binding ThumbnailUrl}" />
+                                            </Border.Background>
+                                        </Border>
+                                    </Border>
+                                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6"
+                                            Padding="8,3" CornerRadius="5" Background="#B0000000">
+                                        <TextBlock FontSize="11" Foreground="White" Text="{Binding ResolutionText}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <ui:ProgressRing HorizontalAlignment="Center" VerticalAlignment="Center" IsIndeterminate="True"
+                                     Visibility="{Binding Catalog.IsLoading, Converter={StaticResource BoolToVisibility}}" />
+                    <ui:TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="Nenhum papel compatível encontrado com estes filtros."
+                                  Visibility="{Binding Catalog.IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <!-- Baixar e aplicar (o usuário escolhe, entre os monitores compatíveis, onde aplicar) e pasta de download -->
+                <ui:Card Grid.Row="4" Margin="0,8,0,0" Padding="14,10">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <ui:TextBlock Grid.Column="0" Margin="0,0,10,0" VerticalAlignment="Center" Text="Aplicar no monitor:" />
+                            <ComboBox Grid.Column="1" MinWidth="210" VerticalAlignment="Center"
+                                      ItemsSource="{Binding Catalog.ApplyTargets}"
+                                      SelectedItem="{Binding Catalog.SelectedTarget}" />
+                            <ui:Button Grid.Column="2" Margin="12,0,0,0" Appearance="Primary" Content="Baixar e aplicar"
+                                       Icon="{ui:SymbolIcon ArrowDownload24}"
+                                       Command="{Binding Catalog.ApplyCommand}" />
+
+                            <StackPanel Grid.Column="3" Margin="16,0" VerticalAlignment="Center">
+                                <ProgressBar Margin="0,0,0,4" Maximum="100" Value="{Binding Catalog.DownloadProgress, Mode=OneWay}"
+                                             Visibility="{Binding Catalog.IsApplying, Converter={StaticResource BoolToVisibility}}" />
+                                <ui:TextBlock TextWrapping="Wrap" MaxHeight="40"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              Text="{Binding Catalog.ApplyMessage}"
+                                              ToolTip="{Binding Catalog.ApplyMessage}" />
+                            </StackPanel>
+
+                            <ui:Button Grid.Column="4" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
+                                       Command="{Binding Catalog.CancelApplyCommand}"
+                                       Visibility="{Binding Catalog.IsApplying, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+
+                        <Border Margin="0,10,0,10" Height="1" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+
+                        <!-- Onde os papéis baixados são salvos -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Column="0" Margin="0,0,10,0" VerticalAlignment="Center" FontTypography="BodyStrong"
+                                          Text="Salvar os papéis em:" />
+                            <TextBox Grid.Column="1" VerticalAlignment="Center" IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                     Padding="0" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     ToolTip="{Binding Catalog.DownloadFolder}"
+                                     Text="{Binding Catalog.DownloadFolder, Mode=OneWay}" />
+                            <WrapPanel Grid.Column="2" Margin="12,0,0,0">
+                                <ui:Button Margin="0,0,8,0" Content="Escolher pasta…" Icon="{ui:SymbolIcon FolderOpen24}"
+                                           Command="{Binding Catalog.ChooseDownloadFolderCommand}" />
+                                <ui:Button Margin="0,0,8,0" Content="Abrir" Icon="{ui:SymbolIcon Folder24}"
+                                           Command="{Binding Catalog.OpenDownloadFolderCommand}" />
+                                <ui:Button Content="Pasta padrão" Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                           ToolTip="Volta a salvar na pasta privada do app"
+                                           Command="{Binding Catalog.ResetDownloadFolderCommand}" />
+                            </WrapPanel>
+                        </Grid>
+                        <ui:TextBlock Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="{Binding Catalog.DownloadFolderMessage}" />
+                    </StackPanel>
+                </ui:Card>
+
+                <!-- Detalhes do papel selecionado e paginação -->
+                <Grid Grid.Row="5" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="{Binding Catalog.SelectedItemInfo}"
+                                  ToolTip="{Binding Catalog.SelectedItemInfo}" />
+                    <StackPanel Grid.Column="1" Margin="16,0,0,0" Orientation="Horizontal">
+                        <ui:Button Icon="{ui:SymbolIcon ChevronLeft24}" ToolTip="Página anterior"
+                                   Command="{Binding Catalog.PreviousPageCommand}" />
+                        <ui:TextBlock Margin="12,0" VerticalAlignment="Center" Text="{Binding Catalog.PageText}" />
+                        <ui:Button Icon="{ui:SymbolIcon ChevronRight24}" ToolTip="Próxima página"
+                                   Command="{Binding Catalog.NextPageCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </TabItem>
+
+        <TabItem Header="Pasta local">
+            <Grid Margin="36,8,36,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Cabeçalho: título e escolha do monitor -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ui:TextBlock FontTypography="Title" Text="Pasta local" />
+                        <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="Use uma pasta do seu computador como fonte de papéis de parede. Só aparecem as imagens compatíveis com o monitor escolhido: a mesma regra do catálogo, usando a resolução real de cada arquivo." />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Top" MinWidth="230"
+                              ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" />
+                </Grid>
+
+                <!-- Pasta, subpastas e resumo do filtro -->
+                <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                    <WrapPanel>
+                        <ComboBox Margin="0,0,8,6" MinWidth="360" VerticalAlignment="Center"
+                                  ItemsSource="{Binding LocalFolder.Folders}"
+                                  SelectedItem="{Binding LocalFolder.SelectedFolder}" />
+                        <ui:Button Margin="0,0,8,6" Content="Adicionar pasta…" Icon="{ui:SymbolIcon FolderOpen24}"
+                                   Command="{Binding LocalFolder.AddFolderCommand}" />
+                        <ui:Button Margin="0,0,8,6" Content="Remover da lista" Icon="{ui:SymbolIcon Dismiss24}"
+                                   ToolTip="Só tira a pasta da lista do app; nenhum arquivo é apagado"
+                                   Command="{Binding LocalFolder.RemoveFolderCommand}" />
+                        <CheckBox Margin="8,0,16,6" Content="Incluir subpastas" VerticalAlignment="Center"
+                                  IsChecked="{Binding LocalFolder.IncludeSubfolders}" />
+                        <ui:Button Margin="0,0,0,6" Content="Analisar de novo" Icon="{ui:SymbolIcon ArrowSync24}"
+                                   Command="{Binding LocalFolder.RescanCommand}" />
+                    </WrapPanel>
+                    <ui:TextBlock TextWrapping="Wrap" FontSize="12"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="{Binding LocalFolder.Summary}" />
+                </StackPanel>
+
+                <!-- Progresso da análise e erros -->
+                <StackPanel Grid.Row="2">
+                    <Grid Margin="0,8,0,0"
+                          Visibility="{Binding LocalFolder.IsScanning, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <ProgressBar Maximum="100" Value="{Binding LocalFolder.ScanProgress, Mode=OneWay}" />
+                            <ui:TextBlock Margin="0,4,0,0" FontSize="12"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding LocalFolder.ScanText}" />
+                        </StackPanel>
+                        <ui:Button Grid.Column="1" Margin="12,0,0,0" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
+                                   Command="{Binding LocalFolder.CancelScanCommand}" />
+                    </Grid>
+                    <ui:InfoBar Margin="0,8,0,0" Severity="Error" IsClosable="False"
+                                Title="Não foi possível analisar a pasta"
+                                Message="{Binding LocalFolder.ErrorMessage}"
+                                IsOpen="{Binding LocalFolder.HasError, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- Miniaturas (esta lista é quem rola) -->
+                <Grid Grid.Row="3" Margin="0,8,0,0">
+                    <ListBox ItemsSource="{Binding LocalFolder.Items}"
+                             SelectedItem="{Binding LocalFolder.SelectedItem}"
+                             ItemContainerStyle="{StaticResource CatalogTileStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             BorderThickness="0" Background="Transparent">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="204" Height="130" ToolTip="{Binding Image.FileName}">
+                                    <!-- Cinza enquanto a miniatura carrega em segundo plano -->
+                                    <Border CornerRadius="7" Background="{DynamicResource ControlFillColorDefaultBrush}">
+                                        <Border CornerRadius="7">
+                                            <Border.Background>
+                                                <ImageBrush Stretch="UniformToFill" ImageSource="{Binding Thumbnail}" />
+                                            </Border.Background>
+                                        </Border>
+                                    </Border>
+                                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6"
+                                            Padding="8,3" CornerRadius="5" Background="#B0000000">
+                                        <TextBlock FontSize="11" Foreground="White" Text="{Binding Image.ResolutionText}" />
+                                    </Border>
+                                    <!-- Marcar para a apresentação do monitor selecionado -->
+                                    <CheckBox HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7"
+                                              Style="{StaticResource TileCheckBoxStyle}"
+                                              IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsMarkingEnabled}"
+                                              ToolTip="{Binding MarkingTooltip}" ToolTipService.ShowOnDisabled="True" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <ui:TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="{Binding LocalFolder.EmptyText}"
+                                  Visibility="{Binding LocalFolder.HasEmptyText, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <!-- Aplicar uma imagem agora e apresentação de slides do monitor selecionado -->
+                <ui:Card Grid.Row="4" Margin="0,8,0,0" Padding="14,10">
+                    <StackPanel>
+
+                        <!-- Aplicar a imagem selecionada: o usuário escolhe, entre os monitores compatíveis, onde aplicar -->
+                        <WrapPanel>
+                            <ui:TextBlock Margin="0,0,10,4" VerticalAlignment="Center" FontTypography="BodyStrong"
+                                          Text="Aplicar a imagem selecionada no monitor:" />
+                            <ComboBox Margin="0,0,12,4" MinWidth="210" VerticalAlignment="Center"
+                                      ItemsSource="{Binding LocalFolder.ApplyTargets}"
+                                      SelectedItem="{Binding LocalFolder.SelectedTarget}" />
+                            <ui:Button Margin="0,0,16,4" Appearance="Primary" Content="Aplicar"
+                                       Icon="{ui:SymbolIcon Checkmark24}"
+                                       Command="{Binding LocalFolder.ApplyCommand}" />
+                            <ui:TextBlock Margin="0,0,0,4" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="800"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding LocalFolder.ApplyMessage}"
+                                          ToolTip="{Binding LocalFolder.ApplyMessage}" />
+                        </WrapPanel>
+
+                        <Border Margin="0,6,0,10" Height="1" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+
+                        <!-- Apresentação de slides: cada monitor tem a sua (marcações, tempo e liga/desliga) -->
+                        <ui:TextBlock FontTypography="BodyStrong">
+                            <Run Text="Apresentação de slides do" />
+                            <Run Text="{Binding SelectedMonitor, Mode=OneWay}" />
+                        </ui:TextBlock>
+                        <ui:TextBlock Margin="0,2,0,8" TextWrapping="Wrap" FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="Marque as imagens (caixinha no canto de cada miniatura) ou use a pasta inteira. A seleção e o tempo valem só para este monitor: escolha outro no topo e repita a configuração nele. Só entram imagens compatíveis com o monitor." />
+
+                        <WrapPanel>
+                            <CheckBox Margin="0,0,16,4" Content="Usar a pasta inteira" VerticalAlignment="Center"
+                                      ToolTip="Usa todas as imagens compatíveis da pasta, sem precisar marcar uma a uma"
+                                      IsEnabled="{Binding LocalFolder.CurrentSlideshow.IsStopped}"
+                                      IsChecked="{Binding LocalFolder.CurrentSlideshow.UseWholeFolder}" />
+                            <ui:TextBlock Margin="0,0,12,4" VerticalAlignment="Center"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding LocalFolder.CurrentSlideshow.MarkedText}" />
+                            <ui:Button Margin="0,0,8,4" Content="{Binding LocalFolder.MarkAllText}"
+                                       Command="{Binding LocalFolder.MarkAllCommand}" />
+                            <ui:Button Margin="0,0,24,4" Content="Limpar marcações"
+                                       Command="{Binding LocalFolder.ClearMarksCommand}" />
+
+                            <ui:TextBlock Margin="0,0,8,4" VerticalAlignment="Center" Text="Trocar a cada" />
+                            <ui:NumberBox Margin="0,0,8,4" Width="130" VerticalAlignment="Center"
+                                          Minimum="1" Maximum="86400" SmallChange="1" LargeChange="10" MaxDecimalPlaces="0"
+                                          ClearButtonEnabled="False"
+                                          Value="{Binding LocalFolder.CurrentSlideshow.IntervalValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox Margin="0,0,16,4" MinWidth="120" VerticalAlignment="Center"
+                                      ItemsSource="{Binding LocalFolder.CurrentSlideshow.Units}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding LocalFolder.CurrentSlideshow.SelectedUnit}" />
+                            <CheckBox Margin="0,0,24,4" Content="Ordem aleatória" VerticalAlignment="Center"
+                                      IsChecked="{Binding LocalFolder.CurrentSlideshow.Shuffle}" />
+
+                            <ui:Button Margin="0,0,8,4" Appearance="Primary" Content="Iniciar apresentação"
+                                       Icon="{ui:SymbolIcon Play24}" Command="{Binding LocalFolder.StartSlideshowCommand}" />
+                            <ui:Button Margin="0,0,8,4" Content="Parar" Icon="{ui:SymbolIcon Stop24}"
+                                       Command="{Binding LocalFolder.CurrentSlideshow.StopCommand}" />
+                            <ui:Button Margin="0,0,0,4" Content="Trocar agora" Icon="{ui:SymbolIcon Next24}"
+                                       Command="{Binding LocalFolder.CurrentSlideshow.NextNowCommand}" />
+                        </WrapPanel>
+
+                        <!-- Por que "Iniciar" está desabilitado (ou problema com o tempo): em destaque, junto dos botões -->
+                        <ui:TextBlock Margin="0,2,0,2" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#FFFFB347"
+                                      Text="{Binding LocalFolder.SlideshowHint}"
+                                      Visibility="{Binding LocalFolder.HasSlideshowHint, Converter={StaticResource BoolToVisibility}}" />
+                        <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap" FontTypography="BodyStrong"
+                                      Text="{Binding LocalFolder.CurrentSlideshow.StatusText}" />
+                        <ui:TextBlock Margin="0,2,0,0" TextWrapping="Wrap" FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="{Binding LocalFolder.CurrentSlideshow.CurrentFile}" />
+                        <ui:TextBlock Margin="0,2,0,0" TextWrapping="Wrap" FontSize="12"
+                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                      Text="{Binding LocalFolder.SlideshowMessage}" />
+                    </StackPanel>
+                </ui:Card>
+
+                <!-- Detalhes da imagem selecionada e paginação -->
+                <Grid Grid.Row="5" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="{Binding LocalFolder.SelectedItemInfo}"
+                                  ToolTip="{Binding LocalFolder.SelectedItemInfo}" />
+                    <StackPanel Grid.Column="1" Margin="16,0,0,0" Orientation="Horizontal">
+                        <ui:Button Icon="{ui:SymbolIcon ChevronLeft24}" ToolTip="Página anterior"
+                                   Command="{Binding LocalFolder.PreviousPageCommand}" />
+                        <ui:TextBlock Margin="12,0" VerticalAlignment="Center" Text="{Binding LocalFolder.PageText}" />
+                        <ui:Button Icon="{ui:SymbolIcon ChevronRight24}" ToolTip="Próxima página"
+                                   Command="{Binding LocalFolder.NextPageCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </TabItem>
+
+        <TabItem Header="Configurações">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,8,36,28" MaxWidth="1100">
+
+                    <ui:TextBlock FontTypography="Title" Text="Configurações" />
+                    <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Text="Ficam salvas neste computador, na sua conta do Windows." />
+
+                    <!-- Chave de API -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Chave de API do Wallhaven (opcional)" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <ui:TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="Sem chave o catálogo funciona normalmente. Com chave, é possível liberar o conteúdo NSFW e o Wallhaven aplica as preferências da sua conta. A chave é guardada criptografada, só pode ser lida por este usuário do Windows e nunca fica escrita no código." />
+                            <ui:HyperlinkButton Margin="0,6,0,0" Padding="0" Content="Onde encontro minha chave? (wallhaven.cc, conta → API Key)"
+                                                NavigateUri="https://wallhaven.cc/settings/account" />
+
+                            <ui:PasswordBox Margin="0,12,0,0" PlaceholderText="Cole a chave aqui"
+                                            Password="{Binding Settings.ApiKeyInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <WrapPanel Margin="0,12,0,0">
+                                <ui:Button Margin="0,0,8,4" Appearance="Primary" Content="Salvar chave" Icon="{ui:SymbolIcon Key24}"
+                                           Command="{Binding Settings.SaveApiKeyCommand}" />
+                                <ui:Button Margin="0,0,8,4" Content="Testar" Icon="{ui:SymbolIcon Beaker24}"
+                                           Command="{Binding Settings.TestApiKeyCommand}" />
+                                <ui:Button Margin="0,0,8,4" Content="Remover" Icon="{ui:SymbolIcon Delete24}"
+                                           Command="{Binding Settings.RemoveApiKeyCommand}" />
+                                <ui:ProgressRing Width="22" Height="22" IsIndeterminate="True" VerticalAlignment="Center"
+                                                 Visibility="{Binding Settings.IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                            </WrapPanel>
+
+                            <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding Settings.ApiKeyMessage}" />
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- Tipos de conteúdo -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Conteúdo do catálogo" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <CheckBox Content="SFW (seguro para o trabalho) — sempre ativo" IsChecked="True" IsEnabled="False" />
+                            <CheckBox Margin="0,6,0,0" Content="Sketchy (limítrofe)" IsChecked="{Binding Settings.IncludeSketchy}" />
+                            <CheckBox Margin="0,6,0,0" Content="NSFW (adulto) — exige chave de API salva"
+                                      IsEnabled="{Binding Settings.CanUseNsfw}" IsChecked="{Binding Settings.IncludeNsfw}" />
+                            <ui:TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                          Text="A mudança vale na hora: o catálogo é buscado de novo com a nova seleção." />
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- Inicialização e segundo plano -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Inicialização e segundo plano" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <CheckBox Content="Iniciar junto com o Windows (em segundo plano, só com o ícone perto do relógio)"
+                                      IsChecked="{Binding Settings.StartWithWindows}" />
+                            <CheckBox Margin="0,8,0,0" Content="Continuar rodando em segundo plano ao fechar a janela"
+                                      IsChecked="{Binding Settings.RunInBackground}" />
+                            <ui:TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding Settings.AutostartMessage}" />
+                            <ui:TextBlock Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12"
+                                          Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                          Text="As apresentações de slides que estavam rodando voltam sozinhas quando o app abre. Para encerrar o app de vez: botão abaixo, ou clique com o botão direito no ícone perto do relógio e escolha Sair. Também dá para desativar a abertura em Configurações do Windows → Aplicativos → Inicialização." />
+                            <ui:Button Margin="0,12,0,0" Content="Encerrar o Wallpaper Manager agora" Icon="{ui:SymbolIcon Dismiss24}"
+                                       Command="{Binding Settings.ExitCommand}" />
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- Apresentação de slides -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Apresentação de slides" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <CheckBox Content="Transição suave entre as imagens (fade)" IsChecked="{Binding Settings.FadeEnabled}" />
+                            <WrapPanel Margin="28,8,0,0">
+                                <ui:TextBlock Margin="0,0,10,0" VerticalAlignment="Center" Text="Duração da transição:" />
+                                <ui:NumberBox Width="130" VerticalAlignment="Center" Minimum="0.3" Maximum="5" SmallChange="0.1" LargeChange="0.5"
+                                              MaxDecimalPlaces="1" ClearButtonEnabled="False"
+                                              IsEnabled="{Binding Settings.FadeEnabled}"
+                                              Value="{Binding Settings.FadeSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Text="segundos" />
+                            </WrapPanel>
+                            <ui:TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12"
+                                          Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                          Text="O Windows troca o papel de parede de uma vez só. Para suavizar, o app mistura uma foto da área de trabalho de antes com uma de depois (os ícones ficam parados). A transição é pulada sozinha quando uma janela cobre o monitor (jogo em tela cheia, programa maximizado) e vale só para a apresentação, não para quando você aplica um papel à mão." />
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- Downloads -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Papéis baixados" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <TextBox IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
+                                     TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     Text="{Binding Settings.DownloadsFolder, Mode=OneWay}" />
+                            <ui:TextBlock Margin="0,6,0,0" Text="{Binding Settings.DownloadsSummary}" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <ui:Button Margin="0,0,8,4" Content="Abrir pasta" Icon="{ui:SymbolIcon FolderOpen24}"
+                                           Command="{Binding Settings.OpenDownloadsFolderCommand}" />
+                                <ui:Button Margin="0,0,8,4" Content="Limpar downloads" Icon="{ui:SymbolIcon Delete24}"
+                                           Command="{Binding Settings.ClearDownloadsCommand}" />
+                            </WrapPanel>
+                            <ui:TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding Settings.DownloadsMessage}" />
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- Arquivos do app -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Arquivos do app" />
+                    <ui:Card Padding="20">
+                        <StackPanel>
+                            <ui:TextBlock FontTypography="BodyStrong" Text="Configurações" />
+                            <TextBox IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0" TextWrapping="Wrap"
+                                     FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     Text="{Binding Settings.SettingsFilePath, Mode=OneWay}" />
+                            <ui:TextBlock Margin="0,12,0,0" FontTypography="BodyStrong" Text="Registro de erros" />
+                            <TextBox IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0" TextWrapping="Wrap"
+                                     FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     Text="{Binding Settings.LogFilePath, Mode=OneWay}" />
+                        </StackPanel>
+                    </ui:Card>
+
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        </TabControl>
+
+        <!-- Barra de status -->
+        <Border Grid.Row="2" Padding="36,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <!-- DockPanel: o texto ocupa o resto da largura e, se for longo, é cortado com "…" (o tooltip mostra tudo) -->
+            <DockPanel>
+                <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Info24" FontSize="16" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <ui:TextBlock Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                              Text="{Binding StatusMessage}" ToolTip="{Binding StatusMessage}" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

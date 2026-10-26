@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+*.user
+publish-output/
+*.pdb
+# pasta de testes isolada (não faz parte do app)
+scratchpad/
