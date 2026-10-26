@@ -30,30 +30,19 @@ Este app nasceu da necessidade real de ter **três monitores** (1440×900, 1920�
 
 ---
 
-## Screenshots / Demo
+## Demonstração
 
-> **Nota:** grave os GIFs e coloque-os na pasta `docs/` com os nomes abaixo.
-> Sugestão: use [ScreenToGif](https://www.screentogif.com/) para gravar.
-
-### Aba Monitores — seleção e aplicação
+### Monitores — um papel de parede para cada tela
 ![Monitores](docs/demo-monitores.gif)
-*Selecione o monitor na lista, escolha uma imagem e aplique.*
+*Escolha o monitor, veja o papel atual e reaplique o último papel. Cada tela é independente.*
 
-### Catálogo Wallhaven — busca e filtro por monitor
+### Catálogo Wallhaven — só o que cabe no monitor
 ![Catálogo](docs/demo-catalogo.gif)
-*Pesquise por tema; só aparecem imagens compatíveis com o monitor escolhido.*
+*Os filtros mudam a busca; só aparecem imagens com a proporção e a resolução do monitor escolhido.*
 
-### Pasta local — seleção e apresentação de slides
-![Pasta local](docs/demo-pasta-local.gif)
-*Marque imagens ou a pasta inteira e inicie a apresentação com intervalo personalizado.*
-
-### Transição suave (fade)
-![Fade](docs/demo-fade.gif)
-*A troca acontece com crossfade suave, sem piscar e sem sumir os ícones da área de trabalho.*
-
-### Ícone na bandeja e início com o Windows
-![Bandeja](docs/demo-bandeja.gif)
-*Fechar a janela deixa o app rodando; o menu de contexto oferece Abrir, Parar apresentações e Sair.*
+### Pasta local — apresentação de slides por monitor
+![Pasta local](docs/demo-pastalocal.gif)
+*Marque imagens, defina o intervalo, inicie a apresentação e troque na hora com "Trocar agora".*
 
 ---
 
