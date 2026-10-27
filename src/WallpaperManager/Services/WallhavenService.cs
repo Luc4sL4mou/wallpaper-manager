@@ -111,8 +111,11 @@ public sealed class WallhavenService
 
     private static string BuildUrl(WallhavenQuery q)
     {
+        string text = q.Text.Trim();
+        string search = text.Length > 0 ? $"&q={Uri.EscapeDataString(text)}" : string.Empty;
+
         return $"{SearchUrl}?atleast={q.MinWidth}x{q.MinHeight}&ratios={q.Ratio}" +
-               $"&sorting={q.Sorting}&order=desc&categories={q.Categories}&purity={q.Purity}&page={q.Page}";
+               $"&sorting={q.Sorting}&order=desc&categories={q.Categories}&purity={q.Purity}&page={q.Page}{search}";
     }
 
     /// <summary>
