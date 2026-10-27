@@ -64,6 +64,11 @@ public sealed class SingleInstance : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
         _showSignal.Set(); // acorda a thread de escuta para ela terminar
         if (IsFirst)
