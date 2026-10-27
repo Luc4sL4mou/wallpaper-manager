@@ -10,13 +10,23 @@ public sealed class CatalogTileViewModel : ViewModelBase
 {
     private bool _isDownloaded;
 
-    public CatalogTileViewModel(WallpaperItem item, bool isDownloaded)
+    public CatalogTileViewModel(
+        WallpaperItem item, bool isDownloaded, Action<CatalogTileViewModel> preview, Action<CatalogTileViewModel> download,
+        Func<bool> canDownload)
     {
         Item = item;
         _isDownloaded = isDownloaded;
+        PreviewCommand = new RelayCommand(() => preview(this));
+        DownloadCommand = new RelayCommand(() => download(this), canDownload);
     }
 
     public WallpaperItem Item { get; }
+
+    /// <summary>Micro botão "olho": abre a visualização em tela cheia.</summary>
+    public RelayCommand PreviewCommand { get; }
+
+    /// <summary>Micro botão de download: baixa este papel para a pasta, sem aplicar.</summary>
+    public RelayCommand DownloadCommand { get; }
 
     public string ThumbnailUrl => Item.ThumbnailUrl;
 
@@ -26,8 +36,16 @@ public sealed class CatalogTileViewModel : ViewModelBase
     public bool IsDownloaded
     {
         get => _isDownloaded;
-        set => SetProperty(ref _isDownloaded, value);
+        set
+        {
+            if (SetProperty(ref _isDownloaded, value))
+            {
+                OnPropertyChanged(nameof(IsNotDownloaded));
+            }
+        }
     }
+
+    public bool IsNotDownloaded => !IsDownloaded;
 }
 
 /// <summary>

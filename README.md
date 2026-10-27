@@ -19,10 +19,11 @@ Este app nasceu da necessidade real de ter **três monitores** (1440×900, 1920�
 | **Por monitor** | Detecta todos os monitores conectados (PerMonitorV2); aplica e lembra o papel de parede de cada um separadamente |
 | **Catálogo Wallhaven** | Barra de pesquisa por termo, categorias e ordenação; só exibe imagens compatíveis com o monitor selecionado |
 | **Paginação numerada** | Navegue por páginas (`1 … 4 5 [6] 7 8 … 120`) e veja sempre outros papéis de parede |
-| **Baixar ou só baixar** | "Baixar e aplicar" ou "Só baixar" para alimentar a pasta de destino sem mexer em nenhum monitor |
+| **Visualização em tela cheia** | Botão de olho (ou duplo clique) abre a imagem original em tela cheia, com ← → para navegar, "Baixar" e "Baixar e aplicar" |
+| **Baixar ou baixar e aplicar** | Micro botão de download em cada miniatura, ou "Baixar" para alimentar a pasta de destino sem mexer em nenhum monitor |
 | **Sem downloads repetidos** | Papéis já baixados ganham o selo "✓ Baixado" e nunca são baixados de novo |
 | **Regra de compatibilidade** | Proporção (tolerância 1%) e resolução (largura e altura ≥ a do monitor) verificadas antes de exibir, antes de baixar e antes de aplicar |
-| **Pasta local** | Usa uma pasta do seu PC como fonte; respeita a mesma regra de dimensões |
+| **Pasta local** | Usa uma pasta do seu PC como fonte; todas as imagens numa lista só, com rolagem infinita; respeita a mesma regra de dimensões |
 | **Apresentação de slides** | Por monitor, intervalo configurável, ordem aleatória ou sequencial, seleção por imagem ou pasta inteira |
 | **Transição suave** | Fade entre os papéis usando captura da área de trabalho (PrintWindow) — ícones continuam visíveis |
 | **Segundo plano** | Roda em segundo plano com ícone na bandeja do sistema; fechar a janela não encerra o app |
