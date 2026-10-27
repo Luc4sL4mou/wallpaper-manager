@@ -49,8 +49,9 @@ public sealed class CatalogViewModel : ViewModelBase
     private bool _includeAnime = true;
     private bool _includePeople = true;
 
-    private IReadOnlyList<WallpaperItem> _items = Array.Empty<WallpaperItem>();
-    private WallpaperItem? _selectedItem;
+    private IReadOnlyList<CatalogTileViewModel> _items = Array.Empty<CatalogTileViewModel>();
+    private IReadOnlyList<PageButtonViewModel> _pageButtons = Array.Empty<PageButtonViewModel>();
+    private CatalogTileViewModel? _selectedTile;
     private string _selectedItemInfo = string.Empty;
     private int _currentPage = 1;
     private int _lastPage = 1;
@@ -91,8 +92,11 @@ public sealed class CatalogViewModel : ViewModelBase
         PreviousPageCommand = new RelayCommand(() => _ = SearchAsync(CurrentPage - 1), () => !IsLoading && CurrentPage > 1);
         NextPageCommand = new RelayCommand(() => _ = SearchAsync(CurrentPage + 1), () => !IsLoading && CurrentPage < LastPage);
         SearchCommand = new RelayCommand(() => _ = SearchAsync(1), () => !IsLoading && Monitor is not null);
-        ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), CanApply);
+        ApplyCommand = new RelayCommand(() => _ = ApplyAsync(apply: true), CanApply);
+        DownloadOnlyCommand = new RelayCommand(() => _ = ApplyAsync(apply: false), CanDownloadOnly);
         CancelApplyCommand = new RelayCommand(() => _applyCts?.Cancel(), () => IsApplying);
+
+        BuildPageButtons();
 
         ChooseDownloadFolderCommand = new RelayCommand(ChooseDownloadFolder, () => !IsApplying);
         ResetDownloadFolderCommand = new RelayCommand(ResetDownloadFolder, () => !IsApplying && !_downloadService.IsDefaultFolder);
@@ -100,6 +104,7 @@ public sealed class CatalogViewModel : ViewModelBase
         _downloadService.FolderChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(DownloadFolder));
+            RefreshDownloadedMarks(); // a nova pasta pode já ter (ou não ter) os papéis da página
             RelayCommand.RaiseCanExecuteChanged();
         };
     }
@@ -244,7 +249,7 @@ public sealed class CatalogViewModel : ViewModelBase
     }
 
     /// <summary>Papéis da página atual que são compatíveis com o monitor.</summary>
-    public IReadOnlyList<WallpaperItem> Items
+    public IReadOnlyList<CatalogTileViewModel> Items
     {
         get => _items;
         private set
@@ -256,15 +261,15 @@ public sealed class CatalogViewModel : ViewModelBase
         }
     }
 
-    public WallpaperItem? SelectedItem
+    public CatalogTileViewModel? SelectedTile
     {
-        get => _selectedItem;
+        get => _selectedTile;
         set
         {
-            if (SetProperty(ref _selectedItem, value))
+            if (SetProperty(ref _selectedTile, value))
             {
-                SelectedItemInfo = DescribeSelectedItem(value);
-                UpdateApplyTargets(value);
+                SelectedItemInfo = DescribeSelectedItem(value?.Item);
+                UpdateApplyTargets(value?.Item);
                 if (!IsApplying)
                 {
                     ApplyMessage = string.Empty;
@@ -272,6 +277,8 @@ public sealed class CatalogViewModel : ViewModelBase
             }
         }
     }
+
+    private WallpaperItem? SelectedItem => _selectedTile?.Item;
 
     /// <summary>Monitores em que o papel selecionado pode ser aplicado (compatíveis e reconhecidos pelo Windows).</summary>
     public IReadOnlyList<MonitorItemViewModel> ApplyTargets
@@ -334,6 +341,7 @@ public sealed class CatalogViewModel : ViewModelBase
             if (SetProperty(ref _currentPage, value))
             {
                 OnPropertyChanged(nameof(PageText));
+                BuildPageButtons();
             }
         }
     }
@@ -346,11 +354,53 @@ public sealed class CatalogViewModel : ViewModelBase
             if (SetProperty(ref _lastPage, value))
             {
                 OnPropertyChanged(nameof(PageText));
+                BuildPageButtons();
             }
         }
     }
 
     public string PageText => $"Página {CurrentPage} de {LastPage}";
+
+    /// <summary>Botões numerados do paginador: 1 … 4 5 [6] 7 8 … 120.</summary>
+    public IReadOnlyList<PageButtonViewModel> PageButtons
+    {
+        get => _pageButtons;
+        private set => SetProperty(ref _pageButtons, value);
+    }
+
+    private void BuildPageButtons()
+    {
+        const int Around = 2; // quantas páginas mostrar de cada lado da atual
+
+        var numbers = new SortedSet<int> { 1, LastPage };
+        for (int n = CurrentPage - Around; n <= CurrentPage + Around; n++)
+        {
+            if (n >= 1 && n <= LastPage)
+            {
+                numbers.Add(n);
+            }
+        }
+
+        var buttons = new List<PageButtonViewModel>();
+        int previous = 0;
+        foreach (int n in numbers)
+        {
+            if (n - previous > 1)
+            {
+                buttons.Add(new PageButtonViewModel("…", isCurrent: false, isGap: true, command: null));
+            }
+
+            int target = n; // cópia: cada botão guarda a sua página
+            buttons.Add(new PageButtonViewModel(
+                n.ToString(),
+                isCurrent: n == CurrentPage,
+                isGap: false,
+                new RelayCommand(() => _ = SearchAsync(target), () => !IsLoading && target != CurrentPage)));
+            previous = n;
+        }
+
+        PageButtons = buttons;
+    }
 
     public bool IsLoading
     {
@@ -407,6 +457,9 @@ public sealed class CatalogViewModel : ViewModelBase
     public RelayCommand SearchCommand { get; }
 
     public RelayCommand ApplyCommand { get; }
+
+    /// <summary>Só baixa o papel selecionado para a pasta de downloads, sem aplicar em nenhum monitor.</summary>
+    public RelayCommand DownloadOnlyCommand { get; }
 
     public RelayCommand CancelApplyCommand { get; }
 
@@ -478,8 +531,8 @@ public sealed class CatalogViewModel : ViewModelBase
     private void ResetResults()
     {
         _searchCts?.Cancel(); // descarta qualquer busca em andamento do monitor anterior
-        Items = Array.Empty<WallpaperItem>();
-        SelectedItem = null;
+        Items = Array.Empty<CatalogTileViewModel>();
+        SelectedTile = null;
         CurrentPage = 1;
         LastPage = 1;
         ErrorMessage = null;
@@ -504,8 +557,8 @@ public sealed class CatalogViewModel : ViewModelBase
         if (categories == "000")
         {
             _searchCts?.Cancel();
-            Items = Array.Empty<WallpaperItem>();
-            SelectedItem = null;
+            Items = Array.Empty<CatalogTileViewModel>();
+            SelectedTile = null;
             Summary = string.Empty;
             IsLoading = false;
             ErrorMessage = "Marque ao menos uma categoria (Geral, Anime ou Pessoas).";
@@ -540,8 +593,8 @@ public sealed class CatalogViewModel : ViewModelBase
                 .ToList();
             int hidden = result.Items.Count - compatible.Count;
 
-            Items = compatible;
-            SelectedItem = null;
+            Items = compatible.Select(i => new CatalogTileViewModel(i, _downloadService.IsDownloaded(i.Id))).ToList();
+            SelectedTile = null;
             CurrentPage = result.CurrentPage;
             LastPage = result.LastPage;
             Summary = $"{result.Total} papéis encontrados · {compatible.Count} exibidos nesta página" +
@@ -553,8 +606,8 @@ public sealed class CatalogViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Items = Array.Empty<WallpaperItem>();
-            SelectedItem = null;
+            Items = Array.Empty<CatalogTileViewModel>();
+            SelectedTile = null;
             Summary = string.Empty;
             if (ex is WallhavenException)
             {
@@ -590,36 +643,66 @@ public sealed class CatalogViewModel : ViewModelBase
 
     private bool CanApply() => !IsApplying && SelectedItem is not null && SelectedTarget is not null;
 
+    // Para só baixar não é preciso um monitor de destino; vale o do filtro para checar a compatibilidade
+    private bool CanDownloadOnly() => !IsApplying && SelectedItem is not null && (SelectedTarget is not null || Monitor is not null);
+
+    // Reconfere na pasta atual quais papéis da página já foram baixados (a pasta mudou ou um download terminou)
+    private void RefreshDownloadedMarks()
+    {
+        foreach (CatalogTileViewModel tile in Items)
+        {
+            tile.IsDownloaded = _downloadService.IsDownloaded(tile.Item.Id);
+        }
+    }
+
     /// <summary>
-    /// Baixa o papel selecionado, valida e aplica no monitor escolhido.
+    /// Baixa o papel selecionado (se ainda não estiver na pasta), valida e, com apply, aplica no monitor escolhido.
     /// Todo erro é tratado aqui dentro, então é seguro chamar sem await.
     /// </summary>
-    private async Task ApplyAsync()
+    private async Task ApplyAsync(bool apply)
     {
-        WallpaperItem? item = SelectedItem;
+        CatalogTileViewModel? tile = _selectedTile;
+        WallpaperItem? item = tile?.Item;
 
         // Procura de novo pelo ID: a lista de monitores pode ter sido recriada desde a seleção
         MonitorItemViewModel? target = _allMonitors.FirstOrDefault(m => m.Info.DeviceId == SelectedTarget?.Info.DeviceId);
-        if (item is null || target is null)
+        MonitorInfo? checkAgainst = target?.Info ?? (apply ? null : Monitor?.Info);
+        if (tile is null || item is null || checkAgainst is null)
         {
-            ApplyMessage = "Escolha um papel e um monitor de destino (o monitor pode ter sido desconectado).";
+            ApplyMessage = apply
+                ? "Escolha um papel e um monitor de destino (o monitor pode ter sido desconectado)."
+                : "Escolha um papel para baixar.";
             return;
         }
+
+        bool alreadyDownloaded = _downloadService.IsDownloaded(item.Id);
 
         _applyCts = new CancellationTokenSource();
         IsApplying = true;
         DownloadProgress = 0;
-        ApplyMessage = $"Baixando {item.Id} ({item.FileSizeText})...";
+        ApplyMessage = alreadyDownloaded
+            ? $"O papel {item.Id} já está baixado; conferindo o arquivo..."
+            : $"Baixando {item.Id} ({item.FileSizeText})...";
 
         try
         {
             var progress = new Progress<double>(percent => DownloadProgress = percent);
-            string path = await _downloadService.DownloadAsync(item, target.Info, progress, _applyCts.Token);
+            string path = await _downloadService.DownloadAsync(item, checkAgainst, progress, _applyCts.Token);
+            tile.IsDownloaded = true;
+
+            if (!apply || target is null)
+            {
+                ApplyMessage = alreadyDownloaded
+                    ? $"O papel {item.Id} já estava baixado em \"{path}\"; não baixei de novo."
+                    : $"Papel {item.Id} baixado em \"{path}\".";
+                return;
+            }
 
             ApplyMessage = $"Aplicando no monitor {target.Number}...";
             await _wallpaperService.SetWallpaperAsync(target.Info, path);
 
-            ApplyMessage = $"Papel {item.Id} aplicado no monitor {target.Number} ({target.Info.ResolutionText}).";
+            ApplyMessage = $"Papel {item.Id} aplicado no monitor {target.Number} ({target.Info.ResolutionText})" +
+                           (alreadyDownloaded ? " (já estava baixado)." : ".");
             WallpaperApplied?.Invoke(this, new WallpaperAppliedEventArgs(target, path, item.Id));
         }
         catch (OperationCanceledException)
@@ -631,9 +714,9 @@ public sealed class CatalogViewModel : ViewModelBase
             // Erros previstos (regra de compatibilidade, rede, disco) já têm mensagem clara; os demais vão ao registro
             if (ex is not (InvalidOperationException or DownloadException or FileNotFoundException))
             {
-                ErrorLog.Write($"Erro inesperado ao aplicar o papel {item.Id}", ex);
+                ErrorLog.Write($"Erro inesperado ao {(apply ? "aplicar" : "baixar")} o papel {item.Id}", ex);
             }
-            ApplyMessage = $"Não foi possível aplicar: {ex.Message}";
+            ApplyMessage = $"Não foi possível {(apply ? "aplicar" : "baixar")}: {ex.Message}";
         }
         finally
         {
