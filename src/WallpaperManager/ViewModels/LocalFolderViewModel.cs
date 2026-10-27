@@ -12,7 +12,7 @@ namespace WallpaperManager.ViewModels;
 /// </summary>
 public sealed class LocalFolderViewModel : ViewModelBase
 {
-    private const int PageSize = 48;
+    private const int BatchSize = 60; // quantas miniaturas entram de cada vez enquanto o usuário rola
     private const int ThumbnailDecodeWidth = 420;
 
     private readonly LocalFolderService _folderService;
@@ -49,8 +49,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
     private IReadOnlyList<LocalImageViewModel> _items = Array.Empty<LocalImageViewModel>();
     private LocalImageViewModel? _selectedItem;
     private string _selectedItemInfo = string.Empty;
-    private int _currentPage = 1;
-    private int _lastPage = 1;
+    private int _shownCount;
 
     private IReadOnlyList<MonitorItemViewModel> _applyTargets = Array.Empty<MonitorItemViewModel>();
     private MonitorItemViewModel? _selectedTarget;
@@ -86,8 +85,6 @@ public sealed class LocalFolderViewModel : ViewModelBase
         RemoveFolderCommand = new RelayCommand(RemoveFolder, () => SelectedFolder is not null);
         RescanCommand = new RelayCommand(() => _ = ScanAsync(), () => !IsScanning && SelectedFolder is not null);
         CancelScanCommand = new RelayCommand(() => _scanCts?.Cancel(), () => IsScanning);
-        PreviousPageCommand = new RelayCommand(() => GoToPage(CurrentPage - 1), () => CurrentPage > 1);
-        NextPageCommand = new RelayCommand(() => GoToPage(CurrentPage + 1), () => CurrentPage < LastPage);
         ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), CanApply);
 
         MarkAllCommand = new RelayCommand(MarkAll, () => CurrentSlideshow is { IsStopped: true, UseWholeFolder: false } && _compatible.Count > 0);
@@ -290,7 +287,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     public bool HasEmptyText => EmptyText.Length > 0;
 
-    /// <summary>Imagens compatíveis da página atual.</summary>
+    /// <summary>Imagens compatíveis já colocadas na tela (a lista cresce conforme o usuário rola).</summary>
     public IReadOnlyList<LocalImageViewModel> Items
     {
         get => _items;
@@ -321,32 +318,6 @@ public sealed class LocalFolderViewModel : ViewModelBase
         get => _selectedItemInfo;
         private set => SetProperty(ref _selectedItemInfo, value);
     }
-
-    public int CurrentPage
-    {
-        get => _currentPage;
-        private set
-        {
-            if (SetProperty(ref _currentPage, value))
-            {
-                OnPropertyChanged(nameof(PageText));
-            }
-        }
-    }
-
-    public int LastPage
-    {
-        get => _lastPage;
-        private set
-        {
-            if (SetProperty(ref _lastPage, value))
-            {
-                OnPropertyChanged(nameof(PageText));
-            }
-        }
-    }
-
-    public string PageText => $"Página {CurrentPage} de {LastPage}";
 
     /// <summary>Monitores em que a imagem selecionada pode ser aplicada (compatíveis e reconhecidos pelo Windows).</summary>
     public IReadOnlyList<MonitorItemViewModel> ApplyTargets
@@ -393,9 +364,6 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     public RelayCommand CancelScanCommand { get; }
 
-    public RelayCommand PreviousPageCommand { get; }
-
-    public RelayCommand NextPageCommand { get; }
 
     public RelayCommand ApplyCommand { get; }
 
@@ -644,8 +612,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
         MarkAllText = "Marcar todas";
         Items = Array.Empty<LocalImageViewModel>();
         SelectedItem = null;
-        CurrentPage = 1;
-        LastPage = 1;
+        _shownCount = 0;
         ErrorMessage = null;
         Summary = string.Empty;
         IsScanning = false;
@@ -739,8 +706,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
         {
             _compatible = Array.Empty<LocalImage>();
             Items = Array.Empty<LocalImageViewModel>();
-            CurrentPage = 1;
-            LastPage = 1;
+            _shownCount = 0;
             UpdateEmptyText();
             return;
         }
@@ -767,8 +733,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
         _compatible = compatible;
         MarkAllText = compatible.Count > 0 ? $"Marcar todas ({compatible.Count})" : "Marcar todas";
-        LastPage = Math.Max(1, (compatible.Count + PageSize - 1) / PageSize);
-        ShowPage(1);
+        ShowFirstBatch();
 
         var hidden = new List<string>();
         if (wrongRatio > 0)
@@ -802,37 +767,47 @@ public sealed class LocalFolderViewModel : ViewModelBase
         RefreshSlideshowHint();
     }
 
-    private void GoToPage(int page)
+    // Recomeça a lista com o primeiro lote; os seguintes entram por LoadMore, conforme o usuário rola
+    private void ShowFirstBatch()
     {
-        if (page < 1 || page > LastPage)
+        _thumbnailsCts?.Cancel();
+        _thumbnailsCts = new CancellationTokenSource();
+        _shownCount = 0;
+        Items = new ObservableCollection<LocalImageViewModel>();
+        LoadMore();
+    }
+
+    /// <summary>
+    /// Rolagem infinita: a tela chama isto quando a rolagem chega perto do fim. Acrescenta o próximo lote
+    /// de imagens (sem paginação) e carrega as miniaturas dele em segundo plano.
+    /// </summary>
+    public void LoadMore()
+    {
+        if (Items is not ObservableCollection<LocalImageViewModel> shown || _shownCount >= _compatible.Count
+            || _thumbnailsCts is null)
         {
             return;
         }
 
-        _thumbnailsCts?.Cancel();
-        SelectedItem = null;
-        ShowPage(page);
-    }
-
-    private void ShowPage(int page)
-    {
-        CurrentPage = page;
-        Items = _compatible.Skip((page - 1) * PageSize).Take(PageSize)
+        var batch = _compatible.Skip(_shownCount).Take(BatchSize)
             .Select(i => new LocalImageViewModel(i, isChecked: IsIncluded(i.Path), isMarkingEnabled: CanEditMarks(), OnItemCheckedChanged))
             .ToList();
+        _shownCount += batch.Count;
+        foreach (LocalImageViewModel item in batch)
+        {
+            shown.Add(item);
+        }
+
         RelayCommand.RaiseCanExecuteChanged();
-        _ = LoadThumbnailsAsync(Items);
+        _ = LoadThumbnailsAsync(batch, _thumbnailsCts.Token);
     }
 
     /// <summary>
-    /// Carrega as miniaturas da página em segundo plano (poucas por vez), para a tela não travar.
+    /// Carrega as miniaturas de um lote em segundo plano (poucas por vez), para a tela não travar.
+    /// O token é o da lista atual: trocar de monitor ou de pasta cancela todos os lotes.
     /// </summary>
-    private async Task LoadThumbnailsAsync(IReadOnlyList<LocalImageViewModel> items)
+    private async Task LoadThumbnailsAsync(IReadOnlyList<LocalImageViewModel> items, CancellationToken token)
     {
-        _thumbnailsCts?.Cancel();
-        var cts = _thumbnailsCts = new CancellationTokenSource();
-        CancellationToken token = cts.Token;
-
         using var gate = new SemaphoreSlim(4);
         IEnumerable<Task> tasks = items.Select(async item =>
         {
@@ -857,7 +832,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            // Trocou de página ou de monitor: as miniaturas antigas não importam mais
+            // Trocou de pasta ou de monitor: as miniaturas antigas não importam mais
         }
     }
 

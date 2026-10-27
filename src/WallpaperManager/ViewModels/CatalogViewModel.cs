@@ -181,6 +181,36 @@ public sealed class CatalogViewModel : ViewModelBase
     /// <summary>Disparado depois que um papel do catálogo foi aplicado com sucesso em um monitor.</summary>
     public event EventHandler<WallpaperAppliedEventArgs>? WallpaperApplied;
 
+    /// <summary>Pede à tela que abra a visualização em tela cheia do papel selecionado.</summary>
+    public event EventHandler? PreviewRequested;
+
+    private void Preview(CatalogTileViewModel tile)
+    {
+        SelectedTile = tile;
+        PreviewRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DownloadTile(CatalogTileViewModel tile)
+    {
+        SelectedTile = tile;
+        _ = ApplyAsync(apply: false);
+    }
+
+    /// <summary>Na visualização: vai para o papel anterior (-1) ou seguinte (+1) da página.</summary>
+    public void MoveSelection(int delta)
+    {
+        if (Items.Count == 0 || IsApplying)
+        {
+            return;
+        }
+
+        int index = _selectedTile is null ? 0 : Items.ToList().IndexOf(_selectedTile) + delta;
+        SelectedTile = Items[(index % Items.Count + Items.Count) % Items.Count];
+    }
+
+    /// <summary>Texto da visualização, ex.: "3 de 24".</summary>
+    public string PositionText => _selectedTile is null ? string.Empty : $"{Items.ToList().IndexOf(_selectedTile) + 1} de {Items.Count}";
+
     /// <summary>
     /// Define a pureza das buscas (três dígitos sfw/sketchy/nsfw, ex.: 100). Se mudou, o catálogo é buscado de novo.
     /// </summary>
@@ -276,6 +306,7 @@ public sealed class CatalogViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedTile, value))
             {
+                OnPropertyChanged(nameof(PositionText));
                 SelectedItemInfo = DescribeSelectedItem(value?.Item);
                 UpdateApplyTargets(value?.Item);
                 if (!IsApplying)
@@ -602,7 +633,9 @@ public sealed class CatalogViewModel : ViewModelBase
                 .ToList();
             int hidden = result.Items.Count - compatible.Count;
 
-            Items = compatible.Select(i => new CatalogTileViewModel(i, _downloadService.IsDownloaded(i.Id))).ToList();
+            Items = compatible
+                .Select(i => new CatalogTileViewModel(i, _downloadService.IsDownloaded(i.Id), Preview, DownloadTile, () => !IsApplying))
+                .ToList();
             SelectedTile = null;
             CurrentPage = result.CurrentPage;
             LastPage = result.LastPage;
