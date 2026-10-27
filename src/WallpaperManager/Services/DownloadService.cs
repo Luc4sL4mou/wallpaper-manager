@@ -148,6 +148,51 @@ public sealed class DownloadService
         return owned.Values.ToList();
     }
 
+    /// <summary>
+    /// Verdadeiro se o arquivo deste papel já está na pasta de downloads atual (não baixa nem abre o arquivo).
+    /// </summary>
+    public bool IsDownloaded(string id) => id.All(char.IsAsciiLetterOrDigit) && FindInFolder(Folder, id).Any();
+
+    // Onde o papel pode já estar: a pasta atual primeiro, depois os arquivos que o app registrou em pastas anteriores
+    private IEnumerable<string> FindDownloadedPaths(string id)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string path in FindInFolder(Folder, id))
+        {
+            if (seen.Add(path))
+            {
+                yield return path;
+            }
+        }
+
+        foreach (string tracked in _settingsService.Current.DownloadedFiles.ToList())
+        {
+            string name = Path.GetFileName(tracked);
+            if (name.StartsWith($"wallhaven-{id}.", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(tracked) && seen.Add(Path.GetFullPath(tracked)))
+            {
+                yield return tracked;
+            }
+        }
+    }
+
+    private static IEnumerable<string> FindInFolder(string folder, string id)
+    {
+        foreach (string extension in AllowedExtensions)
+        {
+            // "-baixado" é o nome usado quando já havia na pasta um arquivo de mesmo nome que não servia
+            foreach (string suffix in new[] { string.Empty, "-baixado" })
+            {
+                string path = Path.Combine(folder, $"wallhaven-{id}{suffix}{extension}");
+                if (File.Exists(path))
+                {
+                    yield return Path.GetFullPath(path);
+                }
+            }
+        }
+    }
+
     private void Track(string path)
     {
         List<string> tracked = _settingsService.Current.DownloadedFiles;
@@ -180,11 +225,14 @@ public sealed class DownloadService
         (string fileName, Uri uri) = ResolveSource(item);
         string path = Path.Combine(Folder, fileName);
 
-        // Já existe e serve (baixado antes por este app, ou um arquivo do usuário com o mesmo nome): reaproveita
-        if (File.Exists(path) && IsValidFor(path, monitor))
+        // Já baixado antes (na pasta atual ou em outra que o app já usou) e serve: não baixa de novo
+        foreach (string existing in FindDownloadedPaths(item.Id))
         {
-            progress?.Report(100);
-            return path;
+            if (IsValidFor(existing, monitor))
+            {
+                progress?.Report(100);
+                return existing;
+            }
         }
 
         // Existe mas não serve (corrompido ou com outro tamanho): é um arquivo que pode ser do usuário, então

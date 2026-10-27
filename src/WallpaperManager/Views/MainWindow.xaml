@@ -420,7 +420,7 @@
                 <!-- Miniaturas (esta lista é quem rola, então não há rolagem dentro de rolagem) -->
                 <Grid Grid.Row="3" Margin="0,8,0,0">
                     <ListBox ItemsSource="{Binding Catalog.Items}"
-                             SelectedItem="{Binding Catalog.SelectedItem}"
+                             SelectedItem="{Binding Catalog.SelectedTile}"
                              ItemContainerStyle="{StaticResource CatalogTileStyle}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              BorderThickness="0" Background="Transparent">
@@ -444,6 +444,13 @@
                                             Padding="8,3" CornerRadius="5" Background="#B0000000">
                                         <TextBlock FontSize="11" Foreground="White" Text="{Binding ResolutionText}" />
                                     </Border>
+                                    <!-- Já está na pasta de downloads: não precisa baixar de novo -->
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
+                                            Padding="8,3" CornerRadius="5" Background="#E0107C10"
+                                            ToolTip="Já baixado na pasta de downloads"
+                                            Visibility="{Binding IsDownloaded, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock FontSize="11" Foreground="White" Text="✓ Baixado" />
+                                    </Border>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -465,6 +472,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
@@ -476,8 +484,12 @@
                             <ui:Button Grid.Column="2" Margin="12,0,0,0" Appearance="Primary" Content="Baixar e aplicar"
                                        Icon="{ui:SymbolIcon ArrowDownload24}"
                                        Command="{Binding Catalog.ApplyCommand}" />
+                            <ui:Button Grid.Column="3" Margin="8,0,0,0" Content="Só baixar"
+                                       Icon="{ui:SymbolIcon ArrowCircleDown24}"
+                                       ToolTip="Salva o papel na pasta de downloads sem aplicar em nenhum monitor"
+                                       Command="{Binding Catalog.DownloadOnlyCommand}" />
 
-                            <StackPanel Grid.Column="3" Margin="16,0" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="4" Margin="16,0" VerticalAlignment="Center">
                                 <ProgressBar Margin="0,0,0,4" Maximum="100" Value="{Binding Catalog.DownloadProgress, Mode=OneWay}"
                                              Visibility="{Binding Catalog.IsApplying, Converter={StaticResource BoolToVisibility}}" />
                                 <ui:TextBlock TextWrapping="Wrap" MaxHeight="40"
@@ -486,7 +498,7 @@
                                               ToolTip="{Binding Catalog.ApplyMessage}" />
                             </StackPanel>
 
-                            <ui:Button Grid.Column="4" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
+                            <ui:Button Grid.Column="5" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
                                        Command="{Binding Catalog.CancelApplyCommand}"
                                        Visibility="{Binding Catalog.IsApplying, Converter={StaticResource BoolToVisibility}}" />
                         </Grid>
@@ -536,7 +548,30 @@
                     <StackPanel Grid.Column="1" Margin="16,0,0,0" Orientation="Horizontal">
                         <ui:Button Icon="{ui:SymbolIcon ChevronLeft24}" ToolTip="Página anterior"
                                    Command="{Binding Catalog.PreviousPageCommand}" />
-                        <ui:TextBlock Margin="12,0" VerticalAlignment="Center" Text="{Binding Catalog.PageText}" />
+                        <!-- Paginador numerado: 1 … 4 5 [6] 7 8 … 120 -->
+                        <ItemsControl Margin="4,0" ItemsSource="{Binding Catalog.PageButtons}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <!-- Página atual (destacada) e as demais; só um dos dois aparece -->
+                                        <ui:Button MinWidth="38" Margin="2,0" Padding="8,5" Appearance="Primary"
+                                                   Content="{Binding Label}"
+                                                   Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVisibility}}" />
+                                        <ui:Button MinWidth="38" Margin="2,0" Padding="8,5"
+                                                   Content="{Binding Label}" Command="{Binding Command}"
+                                                   Visibility="{Binding IsOtherNumber, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Margin="6,0" VerticalAlignment="Center" Text="…"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   Visibility="{Binding IsGap, Converter={StaticResource BoolToVisibility}}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <ui:Button Icon="{ui:SymbolIcon ChevronRight24}" ToolTip="Próxima página"
                                    Command="{Binding Catalog.NextPageCommand}" />
                     </StackPanel>
