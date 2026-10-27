@@ -11,6 +11,7 @@ namespace WallpaperManager.Models;
 /// <param name="Categories">Três dígitos geral/anime/pessoas, ex.: 111.</param>
 /// <param name="Purity">Três dígitos sfw/sketchy/nsfw, ex.: 100 (somente SFW).</param>
 /// <param name="Page">Número da página, a partir de 1.</param>
+/// <param name="Text">Texto pesquisado (parâmetro q); vazio = sem pesquisa.</param>
 public sealed record WallhavenQuery(
     int MinWidth,
     int MinHeight,
@@ -18,4 +19,5 @@ public sealed record WallhavenQuery(
     string Sorting,
     string Categories,
     string Purity,
-    int Page);
+    int Page,
+    string Text = "");

@@ -45,6 +45,7 @@ public sealed class CatalogViewModel : ViewModelBase
     private int _searchId;
 
     private SortOption _selectedSort;
+    private string _searchText = string.Empty;
     private bool _includeGeneral = true;
     private bool _includeAnime = true;
     private bool _includePeople = true;
@@ -195,6 +196,13 @@ public sealed class CatalogViewModel : ViewModelBase
     }
 
     public IReadOnlyList<SortOption> SortOptions { get; }
+
+    /// <summary>Texto da barra de pesquisa; só vale na próxima busca (Enter ou botão), não a cada tecla.</summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set => SetProperty(ref _searchText, value ?? string.Empty);
+    }
 
     public SortOption SelectedSort
     {
@@ -583,7 +591,8 @@ public sealed class CatalogViewModel : ViewModelBase
                 Sorting: SelectedSort.Value,
                 Categories: categories,
                 Purity: _purity,
-                Page: page);
+                Page: page,
+                Text: SearchText);
 
             WallhavenPage result = await _wallhavenService.SearchAsync(query, token);
 
@@ -597,7 +606,8 @@ public sealed class CatalogViewModel : ViewModelBase
             SelectedTile = null;
             CurrentPage = result.CurrentPage;
             LastPage = result.LastPage;
-            Summary = $"{result.Total} papéis encontrados · {compatible.Count} exibidos nesta página" +
+            string forText = SearchText.Trim().Length > 0 ? $" para \"{SearchText.Trim()}\"" : "";
+            Summary = $"{result.Total} papéis encontrados{forText} · {compatible.Count} exibidos nesta página" +
                       (hidden > 0 ? $" ({hidden} ocultos por incompatibilidade)" : "");
         }
         catch (OperationCanceledException)

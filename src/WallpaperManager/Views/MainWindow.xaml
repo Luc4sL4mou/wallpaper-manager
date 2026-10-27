@@ -393,6 +393,22 @@
 
                 <!-- Filtros -->
                 <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                    <!-- Barra de pesquisa: Enter ou o botão buscam; o filtro de monitor continua valendo -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBox PlaceholderText="Pesquisar papéis de parede (ex.: montanha, cyberpunk, gato)…"
+                                    Icon="{ui:SymbolIcon Search24}" MaxLength="100"
+                                    Text="{Binding Catalog.SearchText, UpdateSourceTrigger=PropertyChanged}">
+                            <ui:TextBox.InputBindings>
+                                <KeyBinding Key="Return" Command="{Binding Catalog.SearchCommand}" />
+                            </ui:TextBox.InputBindings>
+                        </ui:TextBox>
+                        <ui:Button Grid.Column="1" Margin="8,0,0,0" Appearance="Primary" Content="Pesquisar"
+                                   Icon="{ui:SymbolIcon Search24}" Command="{Binding Catalog.SearchCommand}" />
+                    </Grid>
                     <WrapPanel>
                         <ComboBox Margin="0,0,16,6" MinWidth="190" VerticalAlignment="Center"
                                   ItemsSource="{Binding Catalog.SortOptions}" SelectedItem="{Binding Catalog.SelectedSort}"
