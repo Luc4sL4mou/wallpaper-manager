@@ -42,11 +42,11 @@ Este app nasceu da necessidade real de ter **três monitores** (1440×900, 1920�
 
 ### Catálogo Wallhaven — só o que cabe no monitor
 ![Catálogo](docs/demo-catalogo.gif)
-*Os filtros mudam a busca; só aparecem imagens com a proporção e a resolução do monitor escolhido.*
+*Escolha tags na lista (ou digite uma): cada uma vira uma etiqueta com X e a busca traz só papéis que têm todas. Só aparecem imagens com a proporção e a resolução do monitor escolhido.*
 
 ### Pasta local — apresentação de slides por monitor
 ![Pasta local](docs/demo-pastalocal.gif)
-*Marque imagens, defina o intervalo, inicie a apresentação e troque na hora com "Trocar agora".*
+*Desmarque qualquer imagem para tirá-la da apresentação (mesmo com ela em andamento); marque de novo para devolvê-la. Defina o intervalo, inicie e troque na hora com "Trocar agora".*
 
 ---
 
