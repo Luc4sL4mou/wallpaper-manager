@@ -58,9 +58,7 @@ public sealed class LocalImageViewModel : ViewModelBase
         }
     }
 
-    public string MarkingTooltip => IsMarkingEnabled
-        ? "Incluir na apresentação de slides deste monitor"
-        : "A apresentação usa a pasta inteira (ou está em andamento): todas as imagens compatíveis entram, sem marcar uma a uma";
+    public string MarkingTooltip => "Incluir na apresentação de slides deste monitor (desmarque para tirar esta imagem)";
 
     /// <summary>Muda a marcação na tela sem avisar quem guarda a seleção (usado por "Marcar todas" e "Limpar").</summary>
     public void SetCheckedSilently(bool isChecked)

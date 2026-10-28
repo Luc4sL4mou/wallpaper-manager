@@ -28,11 +28,8 @@ public sealed class AppSettings
     // Filtros do catálogo, lembrados entre uma execução e outra
     public string CatalogSort { get; set; } = "toplist";
 
-    public bool CatalogIncludeGeneral { get; set; } = true;
-
-    public bool CatalogIncludeAnime { get; set; } = true;
-
-    public bool CatalogIncludePeople { get; set; } = true;
+    /// <summary>Tags escolhidas no filtro do catálogo (a busca exige todas).</summary>
+    public List<string> CatalogTags { get; set; } = new();
 
     /// <summary>Pastas do computador usadas como fonte de papéis de parede (aba Pasta local).</summary>
     public List<string> LocalFolders { get; set; } = new();
@@ -82,6 +79,9 @@ public sealed class MonitorSlideshowSettings
 
     /// <summary>Caminhos das imagens marcadas (podem vir de pastas diferentes).</summary>
     public List<string> MarkedPaths { get; set; } = new();
+
+    /// <summary>Com a pasta inteira: imagens que o usuário desmarcou e que ficam de fora da apresentação.</summary>
+    public List<string> ExcludedPaths { get; set; } = new();
 
     /// <summary>Tempo entre as trocas, em segundos (mínimo 10).</summary>
     public int IntervalSeconds { get; set; } = 300;
