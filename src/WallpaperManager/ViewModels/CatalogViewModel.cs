@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using Microsoft.Win32;
 using WallpaperManager.Models;
@@ -46,9 +47,7 @@ public sealed class CatalogViewModel : ViewModelBase
 
     private SortOption _selectedSort;
     private string _searchText = string.Empty;
-    private bool _includeGeneral = true;
-    private bool _includeAnime = true;
-    private bool _includePeople = true;
+    private readonly ObservableCollection<TagChipViewModel> _tags = new();
 
     private IReadOnlyList<CatalogTileViewModel> _items = Array.Empty<CatalogTileViewModel>();
     private IReadOnlyList<PageButtonViewModel> _pageButtons = Array.Empty<PageButtonViewModel>();
@@ -86,9 +85,10 @@ public sealed class CatalogViewModel : ViewModelBase
         // Filtros lembrados da última vez (atribuídos aos campos, não às propriedades: não disparam busca nem gravação)
         AppSettings saved = settingsService.Current;
         _selectedSort = SortOptions.FirstOrDefault(o => o.Value == saved.CatalogSort) ?? SortOptions[0];
-        _includeGeneral = saved.CatalogIncludeGeneral;
-        _includeAnime = saved.CatalogIncludeAnime;
-        _includePeople = saved.CatalogIncludePeople;
+        foreach (string tag in saved.CatalogTags.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            _tags.Add(new TagChipViewModel(tag, RemoveTag));
+        }
 
         PreviousPageCommand = new RelayCommand(() => _ = SearchAsync(CurrentPage - 1), () => !IsLoading && CurrentPage > 1);
         NextPageCommand = new RelayCommand(() => _ = SearchAsync(CurrentPage + 1), () => !IsLoading && CurrentPage < LastPage);
@@ -247,42 +247,32 @@ public sealed class CatalogViewModel : ViewModelBase
         }
     }
 
-    public bool IncludeGeneral
+    /// <summary>Sugestões de tags para o seletor (o Wallhaven aceita qualquer tag; estas são as mais comuns).</summary>
+    public IReadOnlyList<TagOption> TagOptions { get; } = TagOption.Defaults;
+
+    /// <summary>Tags escolhidas: a busca traz só os papéis que têm TODAS elas.</summary>
+    public ObservableCollection<TagChipViewModel> Tags => _tags;
+
+    /// <summary>Acrescenta uma tag ao filtro e busca de novo. Ignora vazias e repetidas.</summary>
+    public void AddTag(string? tag)
     {
-        get => _includeGeneral;
-        set
+        tag = tag?.Trim();
+        if (string.IsNullOrEmpty(tag) || _tags.Any(t => string.Equals(t.Value, tag, StringComparison.OrdinalIgnoreCase)))
         {
-            if (SetProperty(ref _includeGeneral, value))
-            {
-                SaveFilters();
-                SearchAgain();
-            }
+            return;
         }
+
+        _tags.Add(new TagChipViewModel(tag, RemoveTag));
+        SaveFilters();
+        SearchAgain();
     }
 
-    public bool IncludeAnime
+    private void RemoveTag(TagChipViewModel tag)
     {
-        get => _includeAnime;
-        set
+        if (_tags.Remove(tag))
         {
-            if (SetProperty(ref _includeAnime, value))
-            {
-                SaveFilters();
-                SearchAgain();
-            }
-        }
-    }
-
-    public bool IncludePeople
-    {
-        get => _includePeople;
-        set
-        {
-            if (SetProperty(ref _includePeople, value))
-            {
-                SaveFilters();
-                SearchAgain();
-            }
+            SaveFilters();
+            SearchAgain();
         }
     }
 
@@ -550,10 +540,15 @@ public sealed class CatalogViewModel : ViewModelBase
     {
         AppSettings settings = _settingsService.Current;
         settings.CatalogSort = SelectedSort.Value;
-        settings.CatalogIncludeGeneral = IncludeGeneral;
-        settings.CatalogIncludeAnime = IncludeAnime;
-        settings.CatalogIncludePeople = IncludePeople;
+        settings.CatalogTags = _tags.Select(t => t.Value).ToList();
         _settingsService.Save(); // se falhar, o erro já vai para o registro e os filtros só não ficam lembrados
+    }
+
+    // Sintaxe do Wallhaven: +tag exige a tag; entre aspas quando tem espaço
+    private string BuildSearchText()
+    {
+        IEnumerable<string> required = _tags.Select(t => t.Value.Contains(' ') ? $"+\"{t.Value}\"" : $"+{t.Value}");
+        return string.Join(' ', required.Append(SearchText.Trim())).Trim();
     }
 
     private void SearchAgain()
@@ -592,18 +587,6 @@ public sealed class CatalogViewModel : ViewModelBase
 
         _needsSearch = false;
 
-        string categories = $"{(IncludeGeneral ? 1 : 0)}{(IncludeAnime ? 1 : 0)}{(IncludePeople ? 1 : 0)}";
-        if (categories == "000")
-        {
-            _searchCts?.Cancel();
-            Items = Array.Empty<CatalogTileViewModel>();
-            SelectedTile = null;
-            Summary = string.Empty;
-            IsLoading = false;
-            ErrorMessage = "Marque ao menos uma categoria (Geral, Anime ou Pessoas).";
-            return;
-        }
-
         _searchCts?.Cancel();
         _searchCts = new CancellationTokenSource();
         CancellationToken token = _searchCts.Token;
@@ -620,10 +603,10 @@ public sealed class CatalogViewModel : ViewModelBase
                 MinHeight: info.Height,
                 Ratio: WallhavenService.GetClosestRatio(info),
                 Sorting: SelectedSort.Value,
-                Categories: categories,
+                Categories: "111", // todos os nichos: quem restringe são as tags
                 Purity: _purity,
                 Page: page,
-                Text: SearchText);
+                Text: BuildSearchText());
 
             WallhavenPage result = await _wallhavenService.SearchAsync(query, token);
 
@@ -639,7 +622,8 @@ public sealed class CatalogViewModel : ViewModelBase
             SelectedTile = null;
             CurrentPage = result.CurrentPage;
             LastPage = result.LastPage;
-            string forText = SearchText.Trim().Length > 0 ? $" para \"{SearchText.Trim()}\"" : "";
+            string searched = string.Join(" + ", _tags.Select(t => t.Value).Append(SearchText.Trim()).Where(t => t.Length > 0));
+            string forText = searched.Length > 0 ? $" para \"{searched}\"" : "";
             Summary = $"{result.Total} papéis encontrados{forText} · {compatible.Count} exibidos nesta página" +
                       (hidden > 0 ? $" ({hidden} ocultos por incompatibilidade)" : "");
         }

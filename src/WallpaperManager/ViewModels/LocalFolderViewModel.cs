@@ -173,6 +173,10 @@ public sealed class LocalFolderViewModel : ViewModelBase
         {
             SlideshowHint = "Nenhuma imagem desta pasta é compatível com este monitor, então não há o que apresentar.";
         }
+        else if (slideshow.UseWholeFolder && IncludedCompatibleCount() == 0)
+        {
+            SlideshowHint = "Todas as imagens desta pasta estão desmarcadas: marque pelo menos uma para iniciar.";
+        }
         else if (!slideshow.UseWholeFolder && slideshow.MarkedCount == 0)
         {
             SlideshowHint = "Para iniciar: marque pelo menos uma imagem (caixinha no canto da miniatura) ou ligue \"Usar a pasta inteira\".";
@@ -391,7 +395,8 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     private void OnSlideshowPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MonitorSlideshowViewModel.UseWholeFolder) or nameof(MonitorSlideshowViewModel.IsRunning))
+        if (e.PropertyName is nameof(MonitorSlideshowViewModel.UseWholeFolder) or nameof(MonitorSlideshowViewModel.IsRunning)
+            or nameof(MonitorSlideshowViewModel.ExcludedCount))
         {
             RefreshMarkingState();
         }
@@ -418,14 +423,17 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     private bool IsIncluded(string path)
     {
-        return CurrentSlideshow is { } slideshow && (slideshow.UseWholeFolder || slideshow.IsMarked(path));
+        return CurrentSlideshow?.IsIncluded(path) == true;
     }
 
-    private bool CanEditMarks() => CurrentSlideshow is { UseWholeFolder: false, IsStopped: true };
+    // Sempre editável: com a pasta inteira, desmarcar exclui a imagem; com a apresentação rodando, vale na hora
+    private bool CanEditMarks() => CurrentSlideshow is not null;
+
+    private int IncludedCompatibleCount() => CurrentSlideshow is { } s ? _compatible.Count(i => s.IsIncluded(i.Path)) : 0;
 
     private void OnItemCheckedChanged(LocalImageViewModel item, bool isChecked)
     {
-        CurrentSlideshow?.SetMarked(item.Image.Path, isChecked);
+        CurrentSlideshow?.SetIncluded(item.Image.Path, isChecked);
     }
 
     /// <summary>Marca todas as imagens compatíveis da pasta (de todas as páginas) para este monitor.</summary>
@@ -449,7 +457,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
             return false;
         }
 
-        return slideshow.UseWholeFolder ? _compatible.Count > 0 : slideshow.MarkedCount > 0;
+        return slideshow.UseWholeFolder ? IncludedCompatibleCount() > 0 : slideshow.MarkedCount > 0;
     }
 
     /// <summary>

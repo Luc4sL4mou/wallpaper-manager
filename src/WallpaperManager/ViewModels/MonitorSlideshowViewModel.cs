@@ -34,9 +34,11 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
     private readonly IReadOnlyList<MonitorItemViewModel> _allMonitors;
     private readonly MonitorSlideshowSettings _config;
     private readonly HashSet<string> _marked;
+    private readonly HashSet<string> _excluded;
     private readonly DispatcherTimer _timer;
 
-    private IReadOnlyList<LocalImage> _images = Array.Empty<LocalImage>();
+    private IReadOnlyList<LocalImage> _allImages = Array.Empty<LocalImage>(); // a "foto" de quando iniciou
+    private IReadOnlyList<LocalImage> _images = Array.Empty<LocalImage>();   // a "foto" sem as desmarcadas
     private SlideshowPlaylist? _playlist;
     private int _startedWidth;
     private int _startedHeight;
@@ -74,6 +76,7 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
             ? saved
             : new MonitorSlideshowSettings();
         _marked = new HashSet<string>(_config.MarkedPaths, StringComparer.OrdinalIgnoreCase);
+        _excluded = new HashSet<string>(_config.ExcludedPaths, StringComparer.OrdinalIgnoreCase);
         _useWholeFolder = _config.UseWholeFolder;
         _shuffle = _config.Shuffle;
 
@@ -124,12 +127,51 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
 
     public bool IsMarked(string path) => _marked.Contains(path);
 
-    public void SetMarked(string path, bool marked)
+    /// <summary>Quantas imagens o usuário desmarcou (vale com a pasta inteira).</summary>
+    public int ExcludedCount => _excluded.Count;
+
+    /// <summary>A imagem faz parte da apresentação? Pasta inteira: todas menos as desmarcadas; senão, as marcadas.</summary>
+    public bool IsIncluded(string path) => UseWholeFolder ? !_excluded.Contains(path) : _marked.Contains(path);
+
+    /// <summary>Marca ou desmarca uma imagem; com a pasta inteira, desmarcar significa excluí-la.</summary>
+    public void SetIncluded(string path, bool included)
     {
-        if (marked ? _marked.Add(path) : _marked.Remove(path))
+        bool changed = UseWholeFolder
+            ? (included ? _excluded.Remove(path) : _excluded.Add(path))
+            : (included ? _marked.Add(path) : _marked.Remove(path));
+        if (changed)
         {
             OnMarksChanged();
         }
+    }
+
+    /// <summary>Volta a incluir todas as imagens que tinham sido desmarcadas (pasta inteira).</summary>
+    public void ClearExclusions()
+    {
+        if (_excluded.Count > 0)
+        {
+            _excluded.Clear();
+            OnMarksChanged();
+        }
+    }
+
+    /// <summary>Com a apresentação em andamento, a lista acompanha as marcações na hora.</summary>
+    private void RefreshLiveImages()
+    {
+        if (!IsRunning)
+        {
+            return;
+        }
+
+        _images = _allImages.Where(i => IsIncluded(i.Path)).ToList();
+        if (_images.Count == 0)
+        {
+            Stop("Apresentação parada: todas as imagens foram desmarcadas.");
+            return;
+        }
+
+        _playlist = new SlideshowPlaylist(_images, Shuffle);
+        UpdateStatus();
     }
 
     public void AddMarks(IEnumerable<string> paths)
@@ -159,7 +201,9 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(MarkedCount));
         OnPropertyChanged(nameof(MarkedText));
+        OnPropertyChanged(nameof(ExcludedCount));
         Persist();
+        RefreshLiveImages();
     }
 
     // ---------- Tempo e ordem ----------
@@ -319,8 +363,14 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
             return;
         }
 
-        _images = images;
-        _playlist = new SlideshowPlaylist(images, Shuffle);
+        _allImages = images;
+        _images = images.Where(i => IsIncluded(i.Path)).ToList();
+        if (_images.Count == 0)
+        {
+            return;
+        }
+
+        _playlist = new SlideshowPlaylist(_images, Shuffle);
         _startedWidth = monitor.Width;
         _startedHeight = monitor.Height;
         CurrentFile = string.Empty;
@@ -511,6 +561,7 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
     {
         _config.UseWholeFolder = UseWholeFolder;
         _config.MarkedPaths = _marked.Order(StringComparer.OrdinalIgnoreCase).ToList();
+        _config.ExcludedPaths = _excluded.Order(StringComparer.OrdinalIgnoreCase).ToList();
         _config.Shuffle = Shuffle;
         if (IntervalSeconds > 0)
         {
