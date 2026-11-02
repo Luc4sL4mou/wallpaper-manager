@@ -837,7 +837,7 @@
                         <ui:Button Margin="0,0,16,6" Content="Atualizar" Icon="{ui:SymbolIcon ArrowSync24}"
                                    Command="{Binding LocalFolder.RescanCommand}" />
                         <CheckBox Margin="0,0,0,6" Content="Filtro de irritabilidade" VerticalAlignment="Center"
-                                  ToolTip="Só papéis de parede escuros (com pouca luz branca na tela), para cansar menos a vista. Vale para todos os monitores: a lista, o Marcar todas e as apresentações de slides, inclusive as que já estão rodando. As escuras têm um ícone de lua."
+                                  ToolTip="Só papéis de parede escuros (com pouca luz branca na tela), para quem acha a tela clara incômoda. É um recurso de conforto, não um tratamento. Vale para todos os monitores: a lista, o Marcar todas e as apresentações de slides, inclusive as que já estão rodando. As escuras têm um ícone de lua."
                                   IsChecked="{Binding LocalFolder.IrritabilityFilter}" />
                     </WrapPanel>
                     <ui:TextBlock TextWrapping="Wrap" FontSize="12"
@@ -1078,7 +1078,7 @@
                         <StackPanel>
                             <CheckBox Content="SFW (seguro para o trabalho) — sempre ativo" IsChecked="True" IsEnabled="False" />
                             <CheckBox Margin="0,6,0,0" Content="Sketchy (limítrofe)" IsChecked="{Binding Settings.IncludeSketchy}" />
-                            <CheckBox Margin="0,6,0,0" Content="NSFW (adulto) — exige chave de API salva"
+                            <CheckBox Margin="0,6,0,0" Content="NSFW (adulto, só para maiores de 18 anos) — exige chave de API salva"
                                       IsEnabled="{Binding Settings.CanUseNsfw}" IsChecked="{Binding Settings.IncludeNsfw}" />
                             <ui:TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                           Text="A mudança vale na hora: o catálogo é buscado de novo com a nova seleção." />

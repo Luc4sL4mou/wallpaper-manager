@@ -160,6 +160,6 @@ O Wallpaper Manager não coleta, não envia e não vende nenhum dado para o dese
 
 Esta lista é um resumo para facilitar a leitura. O que vale juridicamente é o texto do arquivo [LICENSE](LICENSE).
 
-> As versões publicadas até o commit `8e39baa` (incluindo as releases v1.0.0 e v1.0.1) foram distribuídas sob a licença MIT e continuam sob ela para quem as obteve. A PolyForm Noncommercial vale a partir das versões seguintes.
+> As versões publicadas até 28/10/2026 (incluindo as releases v1.0.0 e v1.0.1, já retiradas do ar) foram distribuídas sob a licença MIT e continuam sob ela para quem as obteve. A PolyForm Noncommercial vale a partir das versões seguintes.
 
 O executável inclui componentes de terceiros (WPF UI e os componentes que ela incorpora), todos com as licenças e avisos listados em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
