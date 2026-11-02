@@ -571,6 +571,14 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        <CheckBox Margin="0,0,16,6" VerticalAlignment="Center"
+                                  ToolTip="Só papéis escuros (com pouca luz branca), os mesmos que ganham a lua e servem para o Filtro de irritabilidade. A busca pede ao Wallhaven papéis com preto na paleta e o app confere o brilho de cada miniatura."
+                                  IsChecked="{Binding Catalog.DarkOnly}">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="14" Margin="0,0,6,0" Foreground="#FFE9C46A" />
+                                <TextBlock Text="Só escuros" />
+                            </StackPanel>
+                        </CheckBox>
                         <ui:Button Margin="0,0,0,6" Content="Atualizar" Icon="{ui:SymbolIcon ArrowSync24}"
                                    Command="{Binding Catalog.SearchCommand}" />
                     </WrapPanel>
@@ -590,8 +598,9 @@
 
                 <!-- Miniaturas (esta lista é quem rola, então não há rolagem dentro de rolagem) -->
                 <Grid Grid.Row="3" Margin="0,8,0,0">
-                    <ListBox ItemsSource="{Binding Catalog.Items}"
+                    <ListBox x:Name="CatalogList" ItemsSource="{Binding Catalog.Items}"
                              SelectedItem="{Binding Catalog.SelectedTile}"
+                             ScrollViewer.ScrollChanged="CatalogList_ScrollChanged"
                              ItemContainerStyle="{StaticResource CatalogTileStyle}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              BorderThickness="0" Background="Transparent">
@@ -610,13 +619,20 @@
                                     <Border CornerRadius="7" Background="{DynamicResource ControlFillColorDefaultBrush}">
                                         <Border CornerRadius="7">
                                             <Border.Background>
-                                                <ImageBrush Stretch="UniformToFill" ImageSource="{Binding ThumbnailUrl}" />
+                                                <ImageBrush Stretch="UniformToFill" ImageSource="{Binding Thumbnail}" />
                                             </Border.Background>
                                         </Border>
                                     </Border>
                                     <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6"
                                             Padding="8,3" CornerRadius="5" Background="#B0000000">
                                         <TextBlock FontSize="11" Foreground="White" Text="{Binding ResolutionText}" />
+                                    </Border>
+                                    <!-- Imagem escura: própria para o Filtro de irritabilidade da Pasta local -->
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6"
+                                            Width="24" Height="24" CornerRadius="12" Background="#B0000000"
+                                            ToolTip="Imagem escura (própria para o Filtro de irritabilidade)"
+                                            Visibility="{Binding IsDark, Converter={StaticResource BoolToVisibility}}">
+                                        <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="14" Foreground="#FFE9C46A" />
                                     </Border>
                                     <!-- Micro botões: visualizar em tela cheia e baixar (vira um "✓" verde quando já está na pasta) -->
                                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Orientation="Horizontal">
@@ -646,6 +662,15 @@
                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                   Text="Nenhum papel compatível encontrado com estes filtros."
                                   Visibility="{Binding Catalog.IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+                    <!-- Rolagem dentro da página: aparece enquanto a próxima leva de papéis chega -->
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,10"
+                            Padding="14,6" CornerRadius="14" Background="#D0202020"
+                            Visibility="{Binding Catalog.IsLoadingMore, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:ProgressRing Width="16" Height="16" IsIndeterminate="True" Margin="0,0,8,0" />
+                            <TextBlock VerticalAlignment="Center" Foreground="White" Text="Carregando mais papéis…" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
 
                 <!-- Baixar e aplicar (o usuário escolhe, entre os monitores compatíveis, onde aplicar) e pasta de download -->
@@ -809,8 +834,11 @@
                                    Command="{Binding LocalFolder.RemoveFolderCommand}" />
                         <CheckBox Margin="8,0,16,6" Content="Incluir subpastas" VerticalAlignment="Center"
                                   IsChecked="{Binding LocalFolder.IncludeSubfolders}" />
-                        <ui:Button Margin="0,0,0,6" Content="Atualizar" Icon="{ui:SymbolIcon ArrowSync24}"
+                        <ui:Button Margin="0,0,16,6" Content="Atualizar" Icon="{ui:SymbolIcon ArrowSync24}"
                                    Command="{Binding LocalFolder.RescanCommand}" />
+                        <CheckBox Margin="0,0,0,6" Content="Filtro de irritabilidade" VerticalAlignment="Center"
+                                  ToolTip="Só papéis de parede escuros (com pouca luz branca na tela), para cansar menos a vista. Vale para todos os monitores: a lista, o Marcar todas e as apresentações de slides, inclusive as que já estão rodando. As escuras têm um ícone de lua."
+                                  IsChecked="{Binding LocalFolder.IrritabilityFilter}" />
                     </WrapPanel>
                     <ui:TextBlock TextWrapping="Wrap" FontSize="12"
                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -833,6 +861,22 @@
                         </StackPanel>
                         <ui:Button Grid.Column="1" Margin="12,0,0,0" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
                                    Command="{Binding LocalFolder.CancelScanCommand}" />
+                    </Grid>
+                    <Grid Margin="0,8,0,0"
+                          Visibility="{Binding LocalFolder.IsAnalyzing, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <ProgressBar Maximum="100" Value="{Binding LocalFolder.AnalysisProgress, Mode=OneWay}" />
+                            <ui:TextBlock Margin="0,4,0,0" FontSize="12"
+                                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                          Text="{Binding LocalFolder.AnalysisText}" />
+                        </StackPanel>
+                        <ui:Button Grid.Column="1" Margin="12,0,0,0" Content="Cancelar" Icon="{ui:SymbolIcon Dismiss24}"
+                                   ToolTip="Cancela a medição e desliga o filtro"
+                                   Command="{Binding LocalFolder.CancelAnalysisCommand}" />
                     </Grid>
                     <ui:InfoBar Margin="0,8,0,0" Severity="Error" IsClosable="False"
                                 Title="Não foi possível analisar a pasta"
@@ -867,6 +911,13 @@
                                     <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6"
                                             Padding="8,3" CornerRadius="5" Background="#B0000000">
                                         <TextBlock FontSize="11" Foreground="White" Text="{Binding Image.ResolutionText}" />
+                                    </Border>
+                                    <!-- Imagem escura: própria para o Filtro de irritabilidade -->
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6"
+                                            Width="24" Height="24" CornerRadius="12" Background="#B0000000"
+                                            ToolTip="Imagem escura (própria para o Filtro de irritabilidade)"
+                                            Visibility="{Binding IsDark, Converter={StaticResource BoolToVisibility}}">
+                                        <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="14" Foreground="#FFE9C46A" />
                                     </Border>
                                     <!-- Marcar para a apresentação do monitor selecionado -->
                                     <CheckBox HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7"
@@ -1055,14 +1106,14 @@
                         </StackPanel>
                     </ui:Card>
 
-                    <!-- Apresentação de slides -->
-                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Apresentação de slides" />
+                    <!-- Transição ao trocar o papel (apresentação e aplicações à mão) -->
+                    <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Transição entre papéis de parede" />
                     <ui:Card Padding="20">
                         <StackPanel>
-                            <CheckBox Content="Transição suave entre as imagens (fade)" IsChecked="{Binding Settings.FadeEnabled}" />
+                            <CheckBox Content="Fade para preto ao trocar o papel de parede" IsChecked="{Binding Settings.FadeEnabled}" />
                             <WrapPanel Margin="28,8,0,0">
                                 <ui:TextBlock Margin="0,0,10,0" VerticalAlignment="Center" Text="Duração da transição:" />
-                                <ui:NumberBox Width="130" VerticalAlignment="Center" Minimum="0.3" Maximum="5" SmallChange="0.1" LargeChange="0.5"
+                                <ui:NumberBox Width="130" VerticalAlignment="Center" Minimum="0.2" Maximum="3" SmallChange="0.1" LargeChange="0.5"
                                               MaxDecimalPlaces="1" ClearButtonEnabled="False"
                                               IsEnabled="{Binding Settings.FadeEnabled}"
                                               Value="{Binding Settings.FadeSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -1070,7 +1121,7 @@
                             </WrapPanel>
                             <ui:TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12"
                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                          Text="O Windows troca o papel de parede de uma vez só. Para suavizar, o app mistura uma foto da área de trabalho de antes com uma de depois (os ícones ficam parados). A transição é pulada sozinha quando uma janela cobre o monitor (jogo em tela cheia, programa maximizado) e vale só para a apresentação, não para quando você aplica um papel à mão." />
+                                          Text="O Windows troca o papel de parede de uma vez só. Para suavizar, o app escurece a área de trabalho do monitor, troca o papel por baixo e clareia de novo (suas janelas não são cobertas). Vale para toda troca: a apresentação de slides e quando você aplica um papel pelas abas Monitores, Catálogo ou Pasta local. É pulada sozinha quando uma janela cobre o monitor (jogo em tela cheia, programa maximizado)." />
                         </StackPanel>
                     </ui:Card>
 

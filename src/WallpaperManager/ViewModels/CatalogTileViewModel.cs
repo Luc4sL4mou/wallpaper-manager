@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using WallpaperManager.Models;
 
 namespace WallpaperManager.ViewModels;
@@ -9,6 +10,8 @@ namespace WallpaperManager.ViewModels;
 public sealed class CatalogTileViewModel : ViewModelBase
 {
     private bool _isDownloaded;
+    private ImageSource? _thumbnail;
+    private bool _isDark;
 
     public CatalogTileViewModel(
         WallpaperItem item, bool isDownloaded, Action<CatalogTileViewModel> preview, Action<CatalogTileViewModel> download,
@@ -29,6 +32,20 @@ public sealed class CatalogTileViewModel : ViewModelBase
     public RelayCommand DownloadCommand { get; }
 
     public string ThumbnailUrl => Item.ThumbnailUrl;
+
+    /// <summary>A miniatura é baixada depois, em segundo plano; fica nula (cinza na tela) até ficar pronta.</summary>
+    public ImageSource? Thumbnail
+    {
+        get => _thumbnail;
+        set => SetProperty(ref _thumbnail, value);
+    }
+
+    /// <summary>Imagem escura, própria para o Filtro de irritabilidade (mostra o ícone de lua).</summary>
+    public bool IsDark
+    {
+        get => _isDark;
+        set => SetProperty(ref _isDark, value);
+    }
 
     public string ResolutionText => Item.ResolutionText;
 

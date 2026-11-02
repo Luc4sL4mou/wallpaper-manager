@@ -40,6 +40,7 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
     private IReadOnlyList<LocalImage> _allImages = Array.Empty<LocalImage>(); // a "foto" de quando iniciou
     private IReadOnlyList<LocalImage> _images = Array.Empty<LocalImage>();   // a "foto" sem as desmarcadas
     private SlideshowPlaylist? _playlist;
+    private Func<LocalImage, bool>? _imageFilter; // Filtro de irritabilidade (vale para todos os monitores)
     private int _startedWidth;
     private int _startedHeight;
 
@@ -155,7 +156,22 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Com a apresentação em andamento, a lista acompanha as marcações na hora.</summary>
+    /// <summary>A "foto" das imagens de quando a apresentação começou (antes das marcações e do filtro).</summary>
+    public IReadOnlyList<LocalImage> AllImages => _allImages;
+
+    /// <summary>
+    /// Liga (com um critério) ou desliga (null) o Filtro de irritabilidade nesta apresentação.
+    /// Em andamento, a lista muda na hora.
+    /// </summary>
+    public void SetImageFilter(Func<LocalImage, bool>? filter)
+    {
+        _imageFilter = filter;
+        RefreshLiveImages();
+    }
+
+    private bool IsPlayable(LocalImage image) => IsIncluded(image.Path) && (_imageFilter?.Invoke(image) ?? true);
+
+    /// <summary>Com a apresentação em andamento, a lista acompanha as marcações (e o filtro) na hora.</summary>
     private void RefreshLiveImages()
     {
         if (!IsRunning)
@@ -163,10 +179,19 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
             return;
         }
 
-        _images = _allImages.Where(i => IsIncluded(i.Path)).ToList();
+        _images = _allImages.Where(IsPlayable).ToList();
         if (_images.Count == 0)
         {
-            Stop("Apresentação parada: todas as imagens foram desmarcadas.");
+            if (_imageFilter is not null && _allImages.Any(i => IsIncluded(i.Path)))
+            {
+                // Parada automática: volta sozinha quando o filtro for desligado
+                Stop("Apresentação parada: nenhuma imagem escura na lista (Filtro de irritabilidade). Ela volta sozinha ao desligar o filtro.",
+                    keepResume: true);
+            }
+            else
+            {
+                Stop("Apresentação parada: todas as imagens foram desmarcadas.");
+            }
             return;
         }
 
@@ -364,7 +389,7 @@ public sealed class MonitorSlideshowViewModel : ViewModelBase
         }
 
         _allImages = images;
-        _images = images.Where(i => IsIncluded(i.Path)).ToList();
+        _images = images.Where(IsPlayable).ToList();
         if (_images.Count == 0)
         {
             return;

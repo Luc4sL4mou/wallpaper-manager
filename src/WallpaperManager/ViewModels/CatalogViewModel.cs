@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows.Media;
 using Microsoft.Win32;
 using WallpaperManager.Models;
 using WallpaperManager.Services;
@@ -26,10 +28,38 @@ public sealed class CatalogViewModel : ViewModelBase
 {
     private readonly WallhavenService _wallhavenService;
     private readonly DownloadService _downloadService;
-    private readonly WallpaperService _wallpaperService;
+    private readonly WallpaperFader _wallpaperFader; // aplica com o fade para preto
     private readonly SettingsService _settingsService;
     private readonly IReadOnlyList<MonitorItemViewModel> _allMonitors;
     private CancellationTokenSource? _applyCts;
+    private CancellationTokenSource? _thumbnailsCts;
+
+    // Quais papéis (por id) são escuros, para a lua aparecer na hora quando uma página é revista
+    private readonly ConcurrentDictionary<string, bool> _darkById = new();
+
+    // Modo Só escuros: quantos escuros juntar por página, e quantas páginas do Wallhaven gastar no máximo para isso
+    // (cada uma conta no limite de 40 buscas por minuto; páginas repetidas vêm do cache e não contam)
+    private const int DarkPageTarget = 24;
+    private const int MaxApiPagesPerDarkPage = 4;
+
+    // Modo Só escuros: em que página do Wallhaven começa cada página do app
+    private readonly Dictionary<int, int> _darkPageStarts = new();
+
+    // Modo comum: cada página do app junta esta quantidade de páginas do Wallhaven (24 papéis cada),
+    // carregadas aos poucos pela rolagem
+    private const int ApiPagesPerPage = 4;
+
+    // Estado da rolagem da página atual (null = nada a carregar: busca nova, modo Só escuros ou sem monitor)
+    private Func<int, WallhavenQuery>? _scrollQuery;
+    private Func<WallhavenPage, ISet<string>, List<CatalogTileViewModel>>? _scrollTiles;
+    private HashSet<string> _scrollSeen = new();
+    private int _scrollNextApiPage;
+    private int _scrollLastApiPage;
+    private int _scrollHidden;
+    private int _scrollTotal;
+    private string _scrollForText = string.Empty;
+    private string _scrollProblem = string.Empty;
+    private bool _isLoadingMore;
 
     private string _downloadFolderMessage = string.Empty;
     private IReadOnlyList<MonitorItemViewModel> _applyTargets = Array.Empty<MonitorItemViewModel>();
@@ -46,6 +76,7 @@ public sealed class CatalogViewModel : ViewModelBase
     private int _searchId;
 
     private SortOption _selectedSort;
+    private bool _darkOnly;
     private string _searchText = string.Empty;
     private readonly ObservableCollection<TagChipViewModel> _tags = new();
 
@@ -63,13 +94,13 @@ public sealed class CatalogViewModel : ViewModelBase
     public CatalogViewModel(
         WallhavenService wallhavenService,
         DownloadService downloadService,
-        WallpaperService wallpaperService,
+        WallpaperFader wallpaperFader,
         SettingsService settingsService,
         IReadOnlyList<MonitorItemViewModel> allMonitors)
     {
         _wallhavenService = wallhavenService;
         _downloadService = downloadService;
-        _wallpaperService = wallpaperService;
+        _wallpaperFader = wallpaperFader;
         _settingsService = settingsService;
         _allMonitors = allMonitors;
 
@@ -85,6 +116,7 @@ public sealed class CatalogViewModel : ViewModelBase
         // Filtros lembrados da última vez (atribuídos aos campos, não às propriedades: não disparam busca nem gravação)
         AppSettings saved = settingsService.Current;
         _selectedSort = SortOptions.FirstOrDefault(o => o.Value == saved.CatalogSort) ?? SortOptions[0];
+        _darkOnly = saved.CatalogDarkOnly;
         foreach (string tag in saved.CatalogTags.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             _tags.Add(new TagChipViewModel(tag, RemoveTag));
@@ -240,6 +272,23 @@ public sealed class CatalogViewModel : ViewModelBase
         set
         {
             if (SetProperty(ref _selectedSort, value))
+            {
+                SaveFilters();
+                SearchAgain();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Só papéis escuros: pede ao Wallhaven os que têm preto na paleta e, das miniaturas que chegam, mostra só
+    /// as que passam na mesma medição de brilho do Filtro de irritabilidade (as que ganham a lua).
+    /// </summary>
+    public bool DarkOnly
+    {
+        get => _darkOnly;
+        set
+        {
+            if (SetProperty(ref _darkOnly, value))
             {
                 SaveFilters();
                 SearchAgain();
@@ -540,6 +589,7 @@ public sealed class CatalogViewModel : ViewModelBase
     {
         AppSettings settings = _settingsService.Current;
         settings.CatalogSort = SelectedSort.Value;
+        settings.CatalogDarkOnly = DarkOnly;
         settings.CatalogTags = _tags.Select(t => t.Value).ToList();
         _settingsService.Save(); // se falhar, o erro já vai para o registro e os filtros só não ficam lembrados
     }
@@ -565,6 +615,9 @@ public sealed class CatalogViewModel : ViewModelBase
     private void ResetResults()
     {
         _searchCts?.Cancel(); // descarta qualquer busca em andamento do monitor anterior
+        _thumbnailsCts?.Cancel();
+        _scrollQuery = null;
+        IsLoadingMore = false;
         Items = Array.Empty<CatalogTileViewModel>();
         SelectedTile = null;
         CurrentPage = 1;
@@ -588,6 +641,9 @@ public sealed class CatalogViewModel : ViewModelBase
         _needsSearch = false;
 
         _searchCts?.Cancel();
+        _thumbnailsCts?.Cancel();
+        _scrollQuery = null; // a rolagem da página anterior não continua
+        IsLoadingMore = false;
         _searchCts = new CancellationTokenSource();
         CancellationToken token = _searchCts.Token;
         int id = ++_searchId;
@@ -598,34 +654,60 @@ public sealed class CatalogViewModel : ViewModelBase
         try
         {
             MonitorInfo info = monitor.Info;
-            var query = new WallhavenQuery(
+            FilterSummary = DescribeFilter(info); // mostra as tags, a pesquisa e a cor desta busca
+            WallhavenQuery QueryFor(int apiPage) => new(
                 MinWidth: info.Width,
                 MinHeight: info.Height,
                 Ratio: WallhavenService.GetClosestRatio(info),
                 Sorting: SelectedSort.Value,
                 Categories: "111", // todos os nichos: quem restringe são as tags
                 Purity: _purity,
-                Page: page,
-                Text: BuildSearchText());
-
-            WallhavenPage result = await _wallhavenService.SearchAsync(query, token);
+                Page: apiPage,
+                Text: BuildSearchText(),
+                Color: DarkOnly ? "000000" : ""); // só escuros: pede ao Wallhaven papéis com preto na paleta
 
             // Segunda barreira: a API é um filtro aproximado, a regra local é a que vale
-            var compatible = result.Items
-                .Where(i => CompatibilityChecker.IsCompatible(i.Width, i.Height, info))
+            List<CatalogTileViewModel> CompatibleTiles(WallhavenPage result, ISet<string> seen) => result.Items
+                .Where(i => CompatibilityChecker.IsCompatible(i.Width, i.Height, info) && seen.Add(i.Id))
+                .Select(i => new CatalogTileViewModel(i, _downloadService.IsDownloaded(i.Id), Preview, DownloadTile, () => !IsApplying)
+                {
+                    IsDark = _darkById.TryGetValue(i.Id, out bool dark) && dark,
+                })
                 .ToList();
-            int hidden = result.Items.Count - compatible.Count;
 
-            Items = compatible
-                .Select(i => new CatalogTileViewModel(i, _downloadService.IsDownloaded(i.Id), Preview, DownloadTile, () => !IsApplying))
-                .ToList();
-            SelectedTile = null;
-            CurrentPage = result.CurrentPage;
-            LastPage = result.LastPage;
             string searched = string.Join(" + ", _tags.Select(t => t.Value).Append(SearchText.Trim()).Where(t => t.Length > 0));
             string forText = searched.Length > 0 ? $" para \"{searched}\"" : "";
-            Summary = $"{result.Total} papéis encontrados{forText} · {compatible.Count} exibidos nesta página" +
-                      (hidden > 0 ? $" ({hidden} ocultos por incompatibilidade)" : "");
+            _thumbnailsCts = new CancellationTokenSource();
+
+            if (DarkOnly)
+            {
+                await SearchDarkPageAsync(page, QueryFor, CompatibleTiles, forText, id, token);
+                return;
+            }
+
+            // Cada página do app cobre ApiPagesPerPage páginas do Wallhaven: abre com a primeira e as outras
+            // entram pela rolagem (LoadMore), só quando o usuário chega perto do fim
+            int firstApiPage = (page - 1) * ApiPagesPerPage + 1;
+            WallhavenPage result = await _wallhavenService.SearchAsync(QueryFor(firstApiPage), token);
+            var seen = new HashSet<string>();
+            List<CatalogTileViewModel> tiles = CompatibleTiles(result, seen);
+
+            _scrollQuery = QueryFor;
+            _scrollTiles = CompatibleTiles;
+            _scrollSeen = seen;
+            _scrollNextApiPage = firstApiPage + 1;
+            _scrollLastApiPage = Math.Min(firstApiPage + ApiPagesPerPage - 1, result.LastPage);
+            _scrollHidden = result.Items.Count - tiles.Count;
+            _scrollTotal = result.Total;
+            _scrollForText = forText;
+            _scrollProblem = string.Empty;
+
+            Items = new ObservableCollection<CatalogTileViewModel>(tiles);
+            _ = LoadThumbnailsAsync(tiles, _thumbnailsCts.Token);
+            SelectedTile = null;
+            CurrentPage = page;
+            LastPage = Math.Max(1, (result.LastPage + ApiPagesPerPage - 1) / ApiPagesPerPage);
+            UpdateScrollSummary();
         }
         catch (OperationCanceledException)
         {
@@ -652,6 +734,224 @@ public sealed class CatalogViewModel : ViewModelBase
             {
                 IsLoading = false;
             }
+        }
+    }
+
+    /// <summary>Carregando a próxima leva de papéis da página (pela rolagem).</summary>
+    public bool IsLoadingMore
+    {
+        get => _isLoadingMore;
+        private set => SetProperty(ref _isLoadingMore, value);
+    }
+
+    private bool HasMoreToScroll => _scrollQuery is not null && _scrollNextApiPage <= _scrollLastApiPage;
+
+    /// <summary>
+    /// Rolagem dentro da página: a tela chama isto quando a rolagem chega perto do fim (ou se a lista ainda
+    /// não enche a tela). Busca a próxima página do Wallhaven que pertence a esta página do app e acrescenta.
+    /// </summary>
+    public void LoadMore()
+    {
+        if (!IsLoading && !IsLoadingMore && HasMoreToScroll)
+        {
+            _ = LoadMoreAsync();
+        }
+    }
+
+    /// <summary>Todo erro é tratado aqui dentro, então é seguro chamar sem await.</summary>
+    private async Task LoadMoreAsync()
+    {
+        int id = _searchId;
+        CancellationToken token = _searchCts?.Token ?? CancellationToken.None;
+        Func<int, WallhavenQuery> queryFor = _scrollQuery!;
+        Func<WallhavenPage, ISet<string>, List<CatalogTileViewModel>> compatibleTiles = _scrollTiles!;
+        int apiPage = _scrollNextApiPage;
+
+        IsLoadingMore = true;
+        try
+        {
+            WallhavenPage result = await _wallhavenService.SearchAsync(queryFor(apiPage), token);
+            if (id != _searchId || Items is not ObservableCollection<CatalogTileViewModel> shown)
+            {
+                return; // trocou de página ou de busca enquanto carregava
+            }
+
+            List<CatalogTileViewModel> tiles = compatibleTiles(result, _scrollSeen);
+            foreach (CatalogTileViewModel tile in tiles)
+            {
+                shown.Add(tile);
+            }
+
+            _scrollNextApiPage = apiPage + 1;
+            _scrollLastApiPage = Math.Min(_scrollLastApiPage, result.LastPage);
+            _scrollHidden += result.Items.Count - tiles.Count;
+            _scrollProblem = string.Empty;
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(PositionText));
+            UpdateScrollSummary();
+
+            if (_thumbnailsCts is not null)
+            {
+                _ = LoadThumbnailsAsync(tiles, _thumbnailsCts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Trocou de página ou de busca: não importa mais
+        }
+        catch (Exception ex)
+        {
+            if (id == _searchId)
+            {
+                if (ex is not WallhavenException)
+                {
+                    ErrorLog.Write("Erro inesperado ao carregar mais papéis do catálogo", ex);
+                }
+                // A lista continua como está; rolar de novo tenta outra vez
+                _scrollProblem = $"Não foi possível carregar mais: {ex.Message}";
+                UpdateScrollSummary();
+            }
+        }
+        finally
+        {
+            if (id == _searchId)
+            {
+                IsLoadingMore = false;
+            }
+        }
+    }
+
+    private void UpdateScrollSummary()
+    {
+        Summary = $"{_scrollTotal} papéis encontrados{_scrollForText} · {Items.Count} exibidos nesta página" +
+                  (_scrollHidden > 0 ? $" ({_scrollHidden} ocultos por incompatibilidade)" : "") +
+                  (HasMoreToScroll ? " · role para ver mais" : "") +
+                  (_scrollProblem.Length > 0 ? $" · {_scrollProblem}" : "");
+    }
+
+    /// <summary>
+    /// Uma página do modo Só escuros. Como só uma parte de cada página do Wallhaven é escura, junta páginas
+    /// seguidas dele (até MaxApiPagesPerDarkPage) até ter DarkPageTarget papéis escuros. Mede o brilho antes de
+    /// mostrar, para nenhum papel claro aparecer e sumir. Guarda onde cada página do app começa no Wallhaven,
+    /// para Anterior/Próxima funcionarem. Se o limite de buscas do Wallhaven estourar no meio, mostra o que já tem.
+    /// </summary>
+    private async Task SearchDarkPageAsync(
+        int page, Func<int, WallhavenQuery> queryFor, Func<WallhavenPage, ISet<string>, List<CatalogTileViewModel>> compatibleTiles,
+        string forText, int id, CancellationToken token)
+    {
+        if (page == 1)
+        {
+            _darkPageStarts.Clear(); // toda busca nova começa na página 1
+        }
+        if (!_darkPageStarts.TryGetValue(page, out int apiPage))
+        {
+            page = 1; // página que ainda não foi alcançada (não deveria acontecer): recomeça
+            apiPage = 1;
+            _darkPageStarts.Clear();
+        }
+        _darkPageStarts[page] = apiPage;
+
+        var shown = new List<CatalogTileViewModel>();
+        var seen = new HashSet<string>();
+        int analyzed = 0, incompatible = 0, apiPagesUsed = 0, total = 0;
+        bool reachedEnd = false, rateLimited = false;
+
+        while (shown.Count < DarkPageTarget && apiPagesUsed < MaxApiPagesPerDarkPage)
+        {
+            WallhavenPage result;
+            try
+            {
+                result = await _wallhavenService.SearchAsync(queryFor(apiPage), token);
+            }
+            catch (WallhavenException) when (shown.Count > 0)
+            {
+                rateLimited = true; // já tem o que mostrar: melhor uma página menor do que um erro
+                break;
+            }
+
+            apiPagesUsed++;
+            total = result.Total;
+            List<CatalogTileViewModel> tiles = compatibleTiles(result, seen);
+            incompatible += result.Items.Count - tiles.Count;
+            analyzed += tiles.Count;
+
+            await LoadThumbnailsAsync(tiles, _thumbnailsCts!.Token);
+            if (id != _searchId || token.IsCancellationRequested)
+            {
+                return; // substituída por uma busca mais nova
+            }
+
+            shown.AddRange(tiles.Where(t => t.IsDark));
+            apiPage = result.CurrentPage + 1;
+            if (result.CurrentPage >= result.LastPage)
+            {
+                reachedEnd = true;
+                break;
+            }
+        }
+
+        _darkPageStarts[page + 1] = apiPage;
+        Items = shown;
+        SelectedTile = null;
+        CurrentPage = page;
+        LastPage = reachedEnd ? page : page + 1; // o total de páginas escuras só se descobre andando
+
+        int bright = analyzed - shown.Count;
+        Summary = $"{total} papéis encontrados{forText} · {shown.Count} escuros nesta página" +
+                  $" (vindos de {apiPagesUsed} página(s) do Wallhaven; ocultos: {bright} claro(s)" +
+                  (incompatible > 0 ? $", {incompatible} por incompatibilidade" : "") + ")" +
+                  (rateLimited ? " · limite de buscas do Wallhaven atingido: mostrando o que já chegou" : "");
+    }
+
+    /// <summary>
+    /// Baixa as miniaturas da página (poucas por vez), mostra cada uma e mede o brilho para acender a lua nas
+    /// escuras. Trocar de página ou de monitor cancela. Falhas só deixam a miniatura cinza.
+    /// </summary>
+    private async Task LoadThumbnailsAsync(IReadOnlyList<CatalogTileViewModel> tiles, CancellationToken token)
+    {
+        using var gate = new SemaphoreSlim(4);
+        IEnumerable<Task> tasks = tiles.Select(async tile =>
+        {
+            await gate.WaitAsync(token);
+            try
+            {
+                byte[]? data = await _wallhavenService.GetThumbnailAsync(tile.Item.ThumbnailUrl, token);
+                if (data is null)
+                {
+                    return;
+                }
+
+                (ImageSource? image, bool? isDark) = await Task.Run(() =>
+                {
+                    ImageSource? decoded = ThumbnailLoader.TryLoadFromBytes(data);
+                    return (decoded, BrightnessAnalyzer.IsDark(decoded as System.Windows.Media.Imaging.BitmapSource));
+                }, token);
+
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                tile.Thumbnail = image;
+                if (isDark is { } dark)
+                {
+                    _darkById[tile.Item.Id] = dark;
+                    tile.IsDark = dark;
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        try
+        {
+            await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException)
+        {
+            // Trocou de página, de monitor ou de filtro: as miniaturas antigas não importam mais
         }
     }
 
@@ -726,7 +1026,7 @@ public sealed class CatalogViewModel : ViewModelBase
             }
 
             ApplyMessage = $"Aplicando no monitor {target.Number}...";
-            await _wallpaperService.SetWallpaperAsync(target.Info, path);
+            await _wallpaperFader.ApplyAsync(target.Info, path);
 
             ApplyMessage = $"Papel {item.Id} aplicado no monitor {target.Number} ({target.Info.ResolutionText})" +
                            (alreadyDownloaded ? " (já estava baixado)." : ".");
@@ -753,10 +1053,21 @@ public sealed class CatalogViewModel : ViewModelBase
         }
     }
 
-    private static string DescribeFilter(MonitorInfo monitor)
+    /// <summary>Tudo o que a busca manda ao Wallhaven, para o usuário ver exatamente o que está filtrando.</summary>
+    private string DescribeFilter(MonitorInfo monitor)
     {
         string ratio = WallhavenService.GetClosestRatio(monitor);
         string text = $"Filtro enviado ao Wallhaven: atleast={monitor.Width}x{monitor.Height} · ratios={ratio}";
+
+        string search = BuildSearchText();
+        if (search.Length > 0)
+        {
+            text += $" · q={search} (tags e pesquisa)";
+        }
+        if (DarkOnly)
+        {
+            text += " · colors=000000 (Só escuros)";
+        }
 
         if (WallhavenService.GetRatioDeviation(monitor) > CompatibilityChecker.AspectTolerance)
         {

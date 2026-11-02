@@ -43,6 +43,37 @@ public sealed class WallhavenService
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
     }
 
+    private const int MaxThumbnailBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// Baixa a miniatura de um papel (arquivos pequenos do CDN do Wallhaven). Devolve null se o endereço não for
+    /// https do domínio wallhaven.cc, se o arquivo for grande demais ou se a rede falhar. Não entra no limite da API.
+    /// </summary>
+    public async Task<byte[]?> GetThumbnailAsync(string url, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps
+            || !(uri.Host == "wallhaven.cc" || uri.Host.EndsWith(".wallhaven.cc", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        try
+        {
+            using HttpResponseMessage response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxThumbnailBytes)
+            {
+                return null;
+            }
+
+            byte[] data = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            return data.Length <= MaxThumbnailBytes ? data : null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException) && !cancellationToken.IsCancellationRequested)
+        {
+            return null; // falha de rede ou tempo esgotado: a miniatura só não aparece
+        }
+    }
+
     /// <summary>
     /// Chave de API opcional. Fica nas configurações do usuário (etapa 5), nunca no código.
     /// </summary>
@@ -113,9 +144,10 @@ public sealed class WallhavenService
     {
         string text = q.Text.Trim();
         string search = text.Length > 0 ? $"&q={Uri.EscapeDataString(text)}" : string.Empty;
+        string color = q.Color.Length > 0 ? $"&colors={Uri.EscapeDataString(q.Color)}" : string.Empty;
 
         return $"{SearchUrl}?atleast={q.MinWidth}x{q.MinHeight}&ratios={q.Ratio}" +
-               $"&sorting={q.Sorting}&order=desc&categories={q.Categories}&purity={q.Purity}&page={q.Page}{search}";
+               $"&sorting={q.Sorting}&order=desc&categories={q.Categories}&purity={q.Purity}&page={q.Page}{search}{color}";
     }
 
     /// <summary>

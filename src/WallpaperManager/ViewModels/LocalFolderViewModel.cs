@@ -16,7 +16,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
     private const int ThumbnailDecodeWidth = 420;
 
     private readonly LocalFolderService _folderService;
-    private readonly WallpaperService _wallpaperService;
+    private readonly WallpaperFader _wallpaperFader; // aplica com o fade para preto
     private readonly SettingsService _settingsService;
     private readonly SlideshowManager _slideshows;
     private readonly IReadOnlyList<MonitorItemViewModel> _allMonitors;
@@ -37,7 +37,16 @@ public sealed class LocalFolderViewModel : ViewModelBase
     private string? _selectedFolder;
     private bool _includeSubfolders;
     private LocalScanResult? _scan;
-    private IReadOnlyList<LocalImage> _compatible = Array.Empty<LocalImage>();
+    private IReadOnlyList<LocalImage> _sizeCompatible = Array.Empty<LocalImage>(); // compatíveis com o monitor
+    private IReadOnlyList<LocalImage> _compatible = Array.Empty<LocalImage>();     // as que aparecem na tela (após o filtro de brilho)
+    private int _wrongRatio;
+    private int _tooSmall;
+
+    private bool _isAnalyzing;
+    private double _analysisProgress;
+    private string _analysisText = string.Empty;
+    private CancellationTokenSource? _analysisCts;
+    private int _analysisId;
 
     private bool _isScanning;
     private double _scanProgress;
@@ -58,13 +67,13 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     public LocalFolderViewModel(
         LocalFolderService folderService,
-        WallpaperService wallpaperService,
+        WallpaperFader wallpaperFader,
         SettingsService settingsService,
         SlideshowManager slideshowManager,
         IReadOnlyList<MonitorItemViewModel> allMonitors)
     {
         _folderService = folderService;
-        _wallpaperService = wallpaperService;
+        _wallpaperFader = wallpaperFader;
         _settingsService = settingsService;
         _slideshows = slideshowManager;
         _allMonitors = allMonitors;
@@ -85,9 +94,11 @@ public sealed class LocalFolderViewModel : ViewModelBase
         RemoveFolderCommand = new RelayCommand(RemoveFolder, () => SelectedFolder is not null);
         RescanCommand = new RelayCommand(() => _ = ScanAsync(), () => !IsScanning && SelectedFolder is not null);
         CancelScanCommand = new RelayCommand(() => _scanCts?.Cancel(), () => IsScanning);
+        CancelAnalysisCommand = new RelayCommand(() => _analysisCts?.Cancel(), () => IsAnalyzing);
         ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), CanApply);
 
-        MarkAllCommand = new RelayCommand(MarkAll, () => CurrentSlideshow is { IsStopped: true, UseWholeFolder: false } && _compatible.Count > 0);
+        MarkAllCommand = new RelayCommand(
+            MarkAll, () => CurrentSlideshow is { IsStopped: true, UseWholeFolder: false } && _compatible.Count > 0 && !IsAnalyzing);
         ClearMarksCommand = new RelayCommand(ClearMarks, () => CurrentSlideshow is { IsStopped: true, UseWholeFolder: false, MarkedCount: > 0 });
         StartSlideshowCommand = new RelayCommand(() => _ = StartSlideshowAsync(), CanStartSlideshow);
     }
@@ -165,11 +176,11 @@ public sealed class LocalFolderViewModel : ViewModelBase
         {
             SlideshowHint = string.Empty;
         }
-        else if (IsScanning)
+        else if (IsScanning || IsAnalyzing)
         {
             SlideshowHint = "Aguarde a análise da pasta terminar para poder iniciar.";
         }
-        else if (slideshow.UseWholeFolder && _compatible.Count == 0)
+        else if (slideshow.UseWholeFolder && _sizeCompatible.Count == 0)
         {
             SlideshowHint = "Nenhuma imagem desta pasta é compatível com este monitor, então não há o que apresentar.";
         }
@@ -227,6 +238,57 @@ public sealed class LocalFolderViewModel : ViewModelBase
                 ScanIfNeeded();
             }
         }
+    }
+
+    /// <summary>
+    /// Filtro de irritabilidade: só imagens escuras (pouca luz branca na tela). É um só para todos os monitores:
+    /// vale para a lista, para "Marcar todas" e para as apresentações de slides de qualquer monitor, inclusive
+    /// as que já estão rodando e as retomadas ao abrir o app (quem guarda o estado é o SlideshowManager).
+    /// </summary>
+    public bool IrritabilityFilter
+    {
+        get => _slideshows.DarkOnly;
+        set
+        {
+            if (value == _slideshows.DarkOnly)
+            {
+                return;
+            }
+
+            _ = _slideshows.SetDarkOnlyAsync(value); // grava e já muda o critério; o resto da troca é em segundo plano
+            OnPropertyChanged();
+            if (_scan is not null && _monitor is not null)
+            {
+                ApplyBrightnessFilter();
+            }
+        }
+    }
+
+    public bool IsAnalyzing
+    {
+        get => _isAnalyzing;
+        private set
+        {
+            if (SetProperty(ref _isAnalyzing, value))
+            {
+                RelayCommand.RaiseCanExecuteChanged();
+                RefreshSlideshowHint();
+                UpdateEmptyText();
+            }
+        }
+    }
+
+    /// <summary>Progresso da medição de brilho, de 0 a 100.</summary>
+    public double AnalysisProgress
+    {
+        get => _analysisProgress;
+        private set => SetProperty(ref _analysisProgress, value);
+    }
+
+    public string AnalysisText
+    {
+        get => _analysisText;
+        private set => SetProperty(ref _analysisText, value);
     }
 
     public bool IsScanning
@@ -368,6 +430,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     public RelayCommand CancelScanCommand { get; }
 
+    public RelayCommand CancelAnalysisCommand { get; }
 
     public RelayCommand ApplyCommand { get; }
 
@@ -429,7 +492,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
     // Sempre editável: com a pasta inteira, desmarcar exclui a imagem; com a apresentação rodando, vale na hora
     private bool CanEditMarks() => CurrentSlideshow is not null;
 
-    private int IncludedCompatibleCount() => CurrentSlideshow is { } s ? _compatible.Count(i => s.IsIncluded(i.Path)) : 0;
+    private int IncludedCompatibleCount() => CurrentSlideshow is { } s ? _sizeCompatible.Count(i => s.IsIncluded(i.Path)) : 0;
 
     private void OnItemCheckedChanged(LocalImageViewModel item, bool isChecked)
     {
@@ -481,7 +544,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
             // Pasta inteira: a análise que já está na tela (compatíveis com este monitor).
             // Marcadas: lê a resolução real de cada arquivo marcado, em qualquer pasta.
             IReadOnlyList<LocalImage> candidates = slideshow.UseWholeFolder
-                ? _compatible
+                ? _sizeCompatible
                 : await _folderService.DescribeAsync(slideshow.MarkedPaths.ToList(), CancellationToken.None);
 
             // Última barreira antes de começar: só entra o que serve neste monitor
@@ -492,6 +555,15 @@ public sealed class LocalFolderViewModel : ViewModelBase
             if (usable.Count == 0)
             {
                 SlideshowMessage = "Nenhuma das imagens serve neste monitor (arquivos removidos ou com proporção diferente).";
+                return;
+            }
+
+            // Filtro de irritabilidade: mede o brilho do que falta e confere se sobra alguma escura. A apresentação
+            // recebe a lista inteira e ela mesma aplica o filtro, para voltar a usar as claras se ele for desligado.
+            IReadOnlyList<LocalImage> dark = await _slideshows.KeepDarkIfFilteredAsync(usable);
+            if (!dark.Any(i => slideshow.IsIncluded(i.Path)))
+            {
+                SlideshowMessage = "Nenhuma imagem escura entre as escolhidas: desligue o Filtro de irritabilidade ou marque imagens com a lua.";
                 return;
             }
 
@@ -615,7 +687,9 @@ public sealed class LocalFolderViewModel : ViewModelBase
     {
         _scanCts?.Cancel();
         _thumbnailsCts?.Cancel();
+        CancelAnalysis();
         _scan = null;
+        _sizeCompatible = Array.Empty<LocalImage>();
         _compatible = Array.Empty<LocalImage>();
         MarkAllText = "Marcar todas";
         Items = Array.Empty<LocalImageViewModel>();
@@ -712,6 +786,8 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
         if (_scan is null || _monitor is null)
         {
+            CancelAnalysis();
+            _sizeCompatible = Array.Empty<LocalImage>();
             _compatible = Array.Empty<LocalImage>();
             Items = Array.Empty<LocalImageViewModel>();
             _shownCount = 0;
@@ -739,18 +815,174 @@ public sealed class LocalFolderViewModel : ViewModelBase
             }
         }
 
-        _compatible = compatible;
-        MarkAllText = compatible.Count > 0 ? $"Marcar todas ({compatible.Count})" : "Marcar todas";
+        _sizeCompatible = compatible;
+        _wrongRatio = wrongRatio;
+        _tooSmall = tooSmall;
+        ApplyBrightnessFilter();
+    }
+
+    /// <summary>
+    /// Segunda etapa do filtro: com o Filtro de irritabilidade ligado, mede o brilho das imagens compatíveis
+    /// (só as que ainda não foram medidas) e deixa na tela apenas as escuras.
+    /// </summary>
+    private void ApplyBrightnessFilter()
+    {
+        _thumbnailsCts?.Cancel();
+        SelectedItem = null;
+        CancelAnalysis();
+
+        List<LocalImage> pending = _sizeCompatible.Where(i => !_folderService.TryGetIsDark(i, out _)).ToList();
+
+        if (!IrritabilityFilter)
+        {
+            // Filtro desligado: a lista aparece já, e o brilho é medido por trás só para mostrar a lua nas escuras
+            ShowCompatible(_sizeCompatible, brightHidden: 0);
+            if (pending.Count > 0)
+            {
+                _ = AnalyzeBrightnessAsync(pending, blocking: false);
+            }
+            return;
+        }
+
+        if (pending.Count == 0)
+        {
+            ShowDarkOnly();
+            return;
+        }
+
+        _ = AnalyzeBrightnessAsync(pending, blocking: true);
+    }
+
+    // Atualiza a lua das miniaturas que já estão na tela com o que a medição já descobriu
+    private void RefreshMoons()
+    {
+        foreach (LocalImageViewModel item in Items)
+        {
+            item.IsDark = _folderService.TryGetIsDark(item.Image, out bool isDark) && isDark;
+        }
+    }
+
+    private void ShowDarkOnly()
+    {
+        List<LocalImage> dark = _sizeCompatible.Where(i => _folderService.TryGetIsDark(i, out bool isDark) && isDark).ToList();
+        ShowCompatible(dark, _sizeCompatible.Count - dark.Count);
+    }
+
+    private void CancelAnalysis()
+    {
+        _analysisCts?.Cancel();
+        _analysisId++; // o resultado de uma medição cancelada ou substituída é ignorado
+        IsAnalyzing = false;
+    }
+
+    /// <summary>
+    /// Mede o brilho em segundo plano. Todo erro é tratado aqui dentro, então é seguro chamar sem await.
+    /// Com blocking (filtro ligado) mostra progresso e, se o usuário cancelar ou der erro, o filtro é desligado
+    /// e a lista volta a mostrar tudo. Sem blocking, é uma medição discreta (poucas leituras por vez) que só
+    /// vai acendendo a lua nas miniaturas.
+    /// </summary>
+    private async Task AnalyzeBrightnessAsync(List<LocalImage> pending, bool blocking)
+    {
+        _analysisCts = new CancellationTokenSource();
+        CancellationToken token = _analysisCts.Token;
+        int id = ++_analysisId;
+
+        if (blocking)
+        {
+            AnalysisProgress = 0;
+            AnalysisText = $"Medindo o brilho das imagens: 0 de {pending.Count}";
+            IsAnalyzing = true;
+        }
+
+        try
+        {
+            var progress = new Progress<(int Done, int Total)>(p =>
+            {
+                if (id != _analysisId)
+                {
+                    return;
+                }
+
+                RefreshMoons();
+                if (blocking)
+                {
+                    AnalysisProgress = p.Total == 0 ? 0 : p.Done * 100.0 / p.Total;
+                    AnalysisText = $"Medindo o brilho das imagens: {p.Done} de {p.Total}";
+                }
+            });
+
+            await _folderService.AnalyzeBrightnessAsync(pending, blocking ? 4 : 2, progress, token);
+            if (id != _analysisId)
+            {
+                return;
+            }
+
+            if (blocking)
+            {
+                IsAnalyzing = false;
+                ShowDarkOnly();
+            }
+            RefreshMoons();
+        }
+        catch (OperationCanceledException)
+        {
+            if (id == _analysisId && blocking)
+            {
+                DisableFilterAfterFailure(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (id == _analysisId)
+            {
+                ErrorLog.Write("Erro inesperado ao medir o brilho das imagens", ex);
+                if (blocking)
+                {
+                    DisableFilterAfterFailure($"Não foi possível medir o brilho: {ex.Message} (detalhes no registro de erros).");
+                }
+            }
+        }
+    }
+
+    private void DisableFilterAfterFailure(string? message)
+    {
+        IsAnalyzing = false;
+        _ = _slideshows.SetDarkOnlyAsync(false); // desliga em todos os monitores
+        OnPropertyChanged(nameof(IrritabilityFilter));
+        ShowCompatible(_sizeCompatible, brightHidden: 0);
+        if (message is not null)
+        {
+            Summary += " · " + message;
+        }
+    }
+
+    /// <summary>
+    /// Coloca na tela as imagens escolhidas pelos filtros e refaz o resumo. Não toca no disco.
+    /// </summary>
+    private void ShowCompatible(IReadOnlyList<LocalImage> shown, int brightHidden)
+    {
+        if (_scan is null || _monitor is null)
+        {
+            return;
+        }
+
+        MonitorInfo info = _monitor.Info;
+        _compatible = shown;
+        MarkAllText = shown.Count > 0 ? $"Marcar todas ({shown.Count})" : "Marcar todas";
         ShowFirstBatch();
 
         var hidden = new List<string>();
-        if (wrongRatio > 0)
+        if (_wrongRatio > 0)
         {
-            hidden.Add($"{wrongRatio} com outra proporção");
+            hidden.Add($"{_wrongRatio} com outra proporção");
         }
-        if (tooSmall > 0)
+        if (_tooSmall > 0)
         {
-            hidden.Add($"{tooSmall} menor(es) que o monitor");
+            hidden.Add($"{_tooSmall} menor(es) que o monitor");
+        }
+        if (brightHidden > 0)
+        {
+            hidden.Add($"{brightHidden} clara(s) pelo filtro de irritabilidade");
         }
 
         var notes = new List<string>();
@@ -767,7 +999,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
             notes.Add($"limite de {LocalFolderService.MaxImages} imagens atingido");
         }
 
-        Summary = $"{_scan.Images.Count} imagem(ns) na pasta · {compatible.Count} compatível(is) com o monitor {_monitor.Number} ({info.ResolutionText})" +
+        Summary = $"{_scan.Images.Count} imagem(ns) na pasta · {_sizeCompatible.Count} compatível(is) com o monitor {_monitor.Number} ({info.ResolutionText})" +
                   (hidden.Count > 0 ? $" · ocultas: {string.Join(", ", hidden)}" : "") +
                   (notes.Count > 0 ? $" · {string.Join(" · ", notes)}" : "");
         UpdateEmptyText();
@@ -798,7 +1030,9 @@ public sealed class LocalFolderViewModel : ViewModelBase
         }
 
         var batch = _compatible.Skip(_shownCount).Take(BatchSize)
-            .Select(i => new LocalImageViewModel(i, isChecked: IsIncluded(i.Path), isMarkingEnabled: CanEditMarks(), OnItemCheckedChanged))
+            .Select(i => new LocalImageViewModel(
+                i, isChecked: IsIncluded(i.Path), isMarkingEnabled: CanEditMarks(), OnItemCheckedChanged,
+                isDark: _folderService.TryGetIsDark(i, out bool isDark) && isDark))
             .ToList();
         _shownCount += batch.Count;
         foreach (LocalImageViewModel item in batch)
@@ -846,7 +1080,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
 
     private void UpdateEmptyText()
     {
-        if (IsScanning || HasError)
+        if (IsScanning || IsAnalyzing || HasError)
         {
             EmptyText = string.Empty;
         }
@@ -854,9 +1088,13 @@ public sealed class LocalFolderViewModel : ViewModelBase
         {
             EmptyText = "Nenhuma pasta adicionada ainda.\nClique em \"Adicionar pasta…\" e escolha uma pasta com seus papéis de parede.";
         }
-        else if (_scan is not null && _compatible.Count == 0 && _monitor is not null)
+        else if (_scan is not null && _sizeCompatible.Count == 0 && _monitor is not null)
         {
             EmptyText = "Nenhuma imagem desta pasta é compatível com este monitor.\nO resumo acima mostra quantas foram ocultas e por quê.";
+        }
+        else if (_scan is not null && _compatible.Count == 0 && _monitor is not null)
+        {
+            EmptyText = "Nenhuma imagem escura nesta seleção.\nDesligue o Filtro de irritabilidade para ver todas as compatíveis.";
         }
         else
         {
@@ -899,7 +1137,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
         ApplyMessage = $"Aplicando no monitor {target.Number}...";
         try
         {
-            await _wallpaperService.SetWallpaperAsync(target.Info, image.Path);
+            await _wallpaperFader.ApplyAsync(target.Info, image.Path);
             ApplyMessage = $"{image.FileName} aplicada no monitor {target.Number} ({target.Info.ResolutionText}).";
             WallpaperApplied?.Invoke(this, new WallpaperAppliedEventArgs(target, image.Path, WallhavenId: null));
         }

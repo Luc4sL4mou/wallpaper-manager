@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
 {
     private readonly MonitorService _monitorService;
     private readonly WallpaperService _wallpaperService;
+    private readonly WallpaperFader _fader;
     private readonly SettingsService _settingsService;
     private readonly SynchronizationContext? _uiContext;
     private MonitorItemViewModel? _selectedMonitor;
@@ -47,16 +48,17 @@ public sealed class MainViewModel : ViewModelBase
         _settingsService = settingsService;
         _localFolderService = localFolderService;
 
-        Catalog = new CatalogViewModel(wallhavenService, downloadService, wallpaperService, settingsService, Monitors);
+        // Toda troca de papel passa pelo "fader": fade para preto (se ligado nas Configurações), em todas as abas
+        _fader = new WallpaperFader(wallpaperService, settingsService);
+
+        Catalog = new CatalogViewModel(wallhavenService, downloadService, _fader, settingsService, Monitors);
         Catalog.WallpaperApplied += OnWallpaperApplied;
 
         // Cada monitor tem a sua apresentação de slides; o gerenciador as guarda pelo ID do monitor
-        // As trocas da apresentação passam pelo "fader": transição suave (se ligada nas Configurações)
-        var fader = new WallpaperFader(wallpaperService, settingsService);
-        _slideshowManager = new SlideshowManager(fader.ApplyAsync, settingsService, Monitors);
+        _slideshowManager = new SlideshowManager(_fader.ApplyAsync, settingsService, Monitors, localFolderService);
         _slideshowManager.WallpaperChanged += OnSlideshowChanged;
 
-        LocalFolder = new LocalFolderViewModel(localFolderService, wallpaperService, settingsService, _slideshowManager, Monitors);
+        LocalFolder = new LocalFolderViewModel(localFolderService, _fader, settingsService, _slideshowManager, Monitors);
         LocalFolder.WallpaperApplied += OnWallpaperApplied;
 
         // A aba Configurações também aplica a chave de API ao serviço e define a pureza das buscas
@@ -149,7 +151,7 @@ public sealed class MainViewModel : ViewModelBase
                 await Task.Delay(delay);
             }
 
-            int started = await _slideshowManager.ResumeSavedAsync(_localFolderService);
+            int started = await _slideshowManager.ResumeSavedAsync();
             if (started > 0)
             {
                 StatusMessage = $"{started} apresentação(ões) de slides retomada(s) automaticamente.";
@@ -280,7 +282,7 @@ public sealed class MainViewModel : ViewModelBase
                 StatusMessage = $"Restaurando o monitor {monitor.Number}...";
                 try
                 {
-                    await _wallpaperService.SetWallpaperAsync(monitor.Info, last.ImagePath);
+                    await _fader.ApplyAsync(monitor.Info, last.ImagePath);
                     monitor.Slideshow?.StopForManualChange();
                     monitor.CurrentWallpaperPath = TryGetWallpaper(monitor);
                     restored++;
@@ -345,7 +347,7 @@ public sealed class MainViewModel : ViewModelBase
         StatusMessage = $"Reaplicando o último papel no monitor {monitor.Number}...";
         try
         {
-            await _wallpaperService.SetWallpaperAsync(monitor.Info, last.ImagePath);
+            await _fader.ApplyAsync(monitor.Info, last.ImagePath);
             string? warning = RecordApplied(monitor, last.ImagePath, last.WallhavenId);
             StatusMessage = $"Último papel reaplicado no monitor {monitor.Number}." + (warning is null ? "" : " " + warning);
         }
@@ -558,7 +560,7 @@ public sealed class MainViewModel : ViewModelBase
 
         try
         {
-            await _wallpaperService.SetWallpaperAsync(monitor.Info, imagePath);
+            await _fader.ApplyAsync(monitor.Info, imagePath);
 
             string? warning = RecordApplied(monitor, imagePath, wallhavenId: null);
             StatusMessage = $"Papel de parede aplicado no monitor {monitor.Number} ({monitor.Info.ResolutionText}), modo Preencher." +

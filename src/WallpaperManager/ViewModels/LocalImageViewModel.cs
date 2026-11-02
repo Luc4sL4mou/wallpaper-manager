@@ -14,17 +14,27 @@ public sealed class LocalImageViewModel : ViewModelBase
     private ImageSource? _thumbnail;
     private bool _isChecked;
     private bool _isMarkingEnabled;
+    private bool _isDark;
 
     public LocalImageViewModel(
-        LocalImage image, bool isChecked, bool isMarkingEnabled, Action<LocalImageViewModel, bool> checkedChanged)
+        LocalImage image, bool isChecked, bool isMarkingEnabled, Action<LocalImageViewModel, bool> checkedChanged,
+        bool isDark = false)
     {
         Image = image;
+        _isDark = isDark;
         _isChecked = isChecked;
         _isMarkingEnabled = isMarkingEnabled;
         _checkedChanged = checkedChanged;
     }
 
     public LocalImage Image { get; }
+
+    /// <summary>Imagem escura, própria para o Filtro de irritabilidade (mostra o ícone de lua).</summary>
+    public bool IsDark
+    {
+        get => _isDark;
+        set => SetProperty(ref _isDark, value); // a medição termina depois da miniatura aparecer
+    }
 
     public ImageSource? Thumbnail
     {

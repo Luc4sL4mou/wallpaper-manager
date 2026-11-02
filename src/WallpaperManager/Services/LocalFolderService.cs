@@ -34,6 +34,52 @@ public sealed class LocalFolderService
     private readonly ConcurrentDictionary<string, (long Length, DateTime LastWriteUtc, int Width, int Height)> _sizeCache =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Resultado do Filtro de irritabilidade por arquivo. A chave inclui o tamanho: se o arquivo mudou, é analisado de novo
+    private readonly ConcurrentDictionary<string, (long Length, bool IsDark)> _darkCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Resultado já conhecido do Filtro de irritabilidade para a imagem (sem tocar no disco).</summary>
+    public bool TryGetIsDark(LocalImage image, out bool isDark)
+    {
+        if (_darkCache.TryGetValue(image.Path, out var cached) && cached.Length == image.FileSize)
+        {
+            isDark = cached.IsDark;
+            return true;
+        }
+
+        isDark = false;
+        return false;
+    }
+
+    /// <summary>
+    /// Mede o brilho das imagens em segundo plano e guarda o resultado. Imagens ilegíveis ficam como "não escuras".
+    /// </summary>
+    public Task AnalyzeBrightnessAsync(
+        IReadOnlyList<LocalImage> images, int maxParallelism, IProgress<(int Done, int Total)>? progress,
+        CancellationToken cancellationToken)
+    {
+        return Task.Run(() =>
+        {
+            var parallel = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Clamp(maxParallelism, 1, Environment.ProcessorCount),
+                CancellationToken = cancellationToken,
+            };
+
+            int done = 0;
+            Parallel.ForEach(images, parallel, image =>
+            {
+                _darkCache[image.Path] = (image.FileSize, BrightnessAnalyzer.IsDark(image.Path) ?? false);
+
+                int count = Interlocked.Increment(ref done);
+                if (count % 10 == 0 || count == images.Count)
+                {
+                    progress?.Report((count, images.Count));
+                }
+            });
+        }, cancellationToken);
+    }
+
     /// <summary>
     /// Analisa a pasta em segundo plano. O progresso é informado como (feitos, total).
     /// </summary>

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -27,6 +28,26 @@ public static class ThumbnailLoader
         catch (Exception)
         {
             // Arquivo corrompido ou formato não suportado: só não mostra a miniatura
+            return null;
+        }
+    }
+
+    /// <summary>Igual a TryLoad, mas a partir de uma imagem já baixada (ex.: miniaturas do catálogo).</summary>
+    public static ImageSource? TryLoadFromBytes(byte[] data)
+    {
+        try
+        {
+            using var stream = new MemoryStream(data);
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.StreamSource = stream;
+            bitmap.CacheOption = BitmapCacheOption.OnLoad; // lê tudo agora, então o stream pode ser fechado
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception)
+        {
             return null;
         }
     }

@@ -60,7 +60,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _includeSketchy = settings.Current.IncludeSketchy;
         _includeNsfw = settings.Current.IncludeNsfw && _hasApiKey; // NSFW exige chave
         _fadeEnabled = settings.Current.SlideshowFade;
-        _fadeSeconds = settings.Current.SlideshowFadeSeconds;
+        _fadeSeconds = settings.Current.TransitionSeconds;
         _apiKeyMessage = _hasApiKey ? "Chave salva e em uso." : "Nenhuma chave configurada (o catálogo funciona sem ela).";
 
         SaveApiKeyCommand = new RelayCommand(SaveApiKey, () => !IsBusy && ApiKeyInput.Trim().Length > 0);
@@ -205,7 +205,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     /// <summary>Encerra o app de vez (as apresentações em andamento voltam sozinhas na próxima vez que ele abrir).</summary>
     public RelayCommand ExitCommand { get; }
 
-    /// <summary>Transição suave (fade) entre as imagens da apresentação de slides.</summary>
+    /// <summary>Transição "fade para preto" em toda troca de papel (apresentação e aplicações à mão).</summary>
     public bool FadeEnabled
     {
         get => _fadeEnabled;
@@ -219,15 +219,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Duração do fade, em segundos (valores fora de 0,3 a 5 são ignorados).</summary>
+    /// <summary>Duração do fade para preto, em segundos (valores fora de 0,2 a 3 são ignorados).</summary>
     public double? FadeSeconds
     {
         get => _fadeSeconds;
         set
         {
-            if (SetProperty(ref _fadeSeconds, value) && value is >= 0.3 and <= 5)
+            if (SetProperty(ref _fadeSeconds, value) && value is >= 0.2 and <= 3)
             {
-                _settings.Current.SlideshowFadeSeconds = value.Value;
+                _settings.Current.TransitionSeconds = value.Value;
                 _settings.Save();
             }
         }

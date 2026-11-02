@@ -31,12 +31,18 @@ public sealed class AppSettings
     /// <summary>Tags escolhidas no filtro do catálogo (a busca exige todas).</summary>
     public List<string> CatalogTags { get; set; } = new();
 
+    /// <summary>Catálogo mostrando só papéis escuros (os mesmos que ganham a lua do Filtro de irritabilidade).</summary>
+    public bool CatalogDarkOnly { get; set; }
+
     /// <summary>Pastas do computador usadas como fonte de papéis de parede (aba Pasta local).</summary>
     public List<string> LocalFolders { get; set; } = new();
 
     public string? SelectedLocalFolder { get; set; }
 
     public bool LocalFolderIncludeSubfolders { get; set; } = true;
+
+    /// <summary>Filtro de irritabilidade da aba Pasta local: mostra só imagens escuras (pouca luz branca).</summary>
+    public bool IrritabilityFilter { get; set; }
 
     /// <summary>Abrir junto com o Windows (em segundo plano, só com o ícone perto do relógio).</summary>
     public bool StartWithWindows { get; set; } = true;
@@ -56,11 +62,11 @@ public sealed class AppSettings
     /// </summary>
     public List<string> DownloadedFiles { get; set; } = new();
 
-    /// <summary>Transição suave (fade) ao trocar o papel na apresentação de slides.</summary>
+    /// <summary>Transição "fade para preto" ao trocar o papel (apresentação e aplicações à mão).</summary>
     public bool SlideshowFade { get; set; } = true;
 
-    /// <summary>Duração do fade, em segundos.</summary>
-    public double SlideshowFadeSeconds { get; set; } = 1.5;
+    /// <summary>Duração do fade para preto (escurecer + clarear), em segundos.</summary>
+    public double TransitionSeconds { get; set; } = 0.6;
 
     /// <summary>Último papel aplicado por monitor; a chave é o ID do dispositivo.</summary>
     public Dictionary<string, LastWallpaper> LastWallpapers { get; set; } = new(StringComparer.OrdinalIgnoreCase);

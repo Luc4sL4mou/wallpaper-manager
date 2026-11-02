@@ -24,12 +24,41 @@ public partial class MainWindow : FluentWindow
             if (e.OldValue is MainViewModel old)
             {
                 old.Catalog.PreviewRequested -= Catalog_PreviewRequested;
+                old.Catalog.PropertyChanged -= Catalog_PropertyChanged;
             }
             if (e.NewValue is MainViewModel vm)
             {
                 vm.Catalog.PreviewRequested += Catalog_PreviewRequested;
+                vm.Catalog.PropertyChanged += Catalog_PropertyChanged;
             }
         };
+    }
+
+    // Página nova no catálogo (lista trocada, não só acrescentada pela rolagem): volta para o topo
+    private void Catalog_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(CatalogViewModel.Items))
+        {
+            return;
+        }
+
+        // Depois que a tela já recebeu a lista nova
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (CatalogList.Items.Count > 0)
+            {
+                CatalogList.ScrollIntoView(CatalogList.Items[0]);
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    // Rolagem dentro da página do catálogo: perto do fim (ou se a lista ainda não enche a tela), pede mais papéis
+    private void CatalogList_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && e.ExtentHeight - (e.VerticalOffset + e.ViewportHeight) < LoadMoreThreshold)
+        {
+            vm.Catalog.LoadMore();
+        }
     }
 
     private void Catalog_PreviewRequested(object? sender, EventArgs e)

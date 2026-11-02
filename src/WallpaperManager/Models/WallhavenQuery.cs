@@ -12,6 +12,7 @@ namespace WallpaperManager.Models;
 /// <param name="Purity">Três dígitos sfw/sketchy/nsfw, ex.: 100 (somente SFW).</param>
 /// <param name="Page">Número da página, a partir de 1.</param>
 /// <param name="Text">Texto pesquisado (parâmetro q); vazio = sem pesquisa.</param>
+/// <param name="Color">Cor da paleta do Wallhaven que o papel deve ter (parâmetro colors, ex.: 000000); vazio = qualquer.</param>
 public sealed record WallhavenQuery(
     int MinWidth,
     int MinHeight,
@@ -20,4 +21,5 @@ public sealed record WallhavenQuery(
     string Categories,
     string Purity,
     int Page,
-    string Text = "");
+    string Text = "",
+    string Color = "");
