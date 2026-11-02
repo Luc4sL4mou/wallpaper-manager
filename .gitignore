@@ -6,3 +6,11 @@ publish-output/
 *.pdb
 # pasta de testes isolada (não faz parte do app)
 scratchpad/
+
+# segredos e chaves: nunca versionar
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+settings.json
