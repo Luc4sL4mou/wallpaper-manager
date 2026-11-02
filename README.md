@@ -52,7 +52,7 @@ Mostra e usa **só papéis de parede escuros**, com pouca área muito clara, par
 
 ## Demonstração
 
-> As demonstrações usam papéis de parede de cores lisas, criados para isso. No GIF do catálogo, as miniaturas do Wallhaven aparecem pixeladas de propósito: as imagens pertencem aos seus autores.
+> **As imagens dos GIFs foram restritas preventivamente por questões de direitos autorais e são meramente ilustrativas.** As demonstrações usam papéis de parede de cores lisas, criados só para isso. No GIF do catálogo, as miniaturas do Wallhaven aparecem pixeladas de propósito: as imagens pertencem aos seus autores. O que você verá no app depende das imagens da sua pasta e do que o Wallhaven oferecer.
 
 ### Monitores — um papel de parede para cada tela
 ![Monitores](docs/demo-monitores.gif)
