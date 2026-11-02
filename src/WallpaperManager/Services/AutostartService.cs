@@ -24,8 +24,8 @@ public sealed class AutostartService
     }
 
     /// <summary>
-    /// Só o app INSTALADO (em %LocalAppData%\Programs\WallpaperManager) mexe no registro. Assim, rodar a versão
-    /// de desenvolvimento (bin\Debug) ou um teste nunca troca o caminho que o Windows vai abrir no logon.
+    /// Só mexe no registro se não for um build de desenvolvimento (bin\Debug ou bin\Release da IDE).
+    /// Qualquer exe publicado — na pasta do projeto, em AppLocal ou em outro local — pode registrar o autostart.
     /// </summary>
     public static bool IsInstalledLocation(string? exePath)
     {
@@ -34,8 +34,9 @@ public sealed class AutostartService
             return false;
         }
 
-        string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "WallpaperManager");
-        return Path.GetFullPath(exePath).StartsWith(installed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        string path = Path.GetFullPath(exePath);
+        return !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar + "Debug" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            && !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>O comando registrado hoje (ex.: "C:\...\WallpaperManager.exe" --minimized), ou null.</summary>
