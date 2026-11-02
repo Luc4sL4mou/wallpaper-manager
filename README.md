@@ -12,13 +12,29 @@ Este app nasceu da necessidade real de ter **três monitores** (1440×900, 1920�
 
 ---
 
+## 🌙 Filtro de irritabilidade
+
+Mostra e usa **só papéis de parede escuros**, com pouca área muito clara, para quem acha a tela clara cansativa ou incômoda: pessoas sensíveis à luz ou que usam o computador em ambientes com pouca iluminação.
+
+- **Um clique vale para todos os monitores.** Ligado na aba Pasta local, ele filtra a lista e o "Marcar todas" e faz toda apresentação de slides, de qualquer monitor, usar só imagens escuras. Isso inclui as que já estão rodando e as que voltam sozinhas ao abrir o app. Desligado, tudo volta a usar todas as imagens.
+- **A lua 🌙 mostra quem passa no filtro**, mesmo com ele desligado. O app mede o brilho de cada imagem da pasta em segundo plano e marca as escuras.
+- **No catálogo**, as miniaturas escuras também ganham a lua, e a opção **"Só escuros"** busca no Wallhaven só papéis com essas características, juntando páginas até encher a tela.
+- **O que conta como escuro:** brilho médio baixo, cores pouco intensas (um vermelho ou azul vivo não passa) e no máximo cerca de 4% da imagem com áreas muito claras, para tolerar detalhes como uma lua ou estrelas.
+- **Só o fundo da área de trabalho muda.** O tema das janelas e dos aplicativos continua como está.
+
+> É um recurso de **conforto visual**, não um tratamento: ele não previne nem trata doenças oculares. Se você tem desconforto frequente, dor ou sensibilidade forte à luz, procure um oftalmologista.
+
+---
+
 ## Funcionalidades
 
 | Função | Detalhe |
 |---|---|
 | **Por monitor** | Detecta todos os monitores conectados (PerMonitorV2); aplica e lembra o papel de parede de cada um separadamente |
 | **Catálogo Wallhaven** | Barra de pesquisa por termo, filtro por várias tags (etiquetas com X; traz só papéis que têm todas) e ordenação; só exibe imagens compatíveis com o monitor selecionado |
-| **Paginação numerada** | Navegue por páginas (`1 … 4 5 [6] 7 8 … 120`) e veja sempre outros papéis de parede |
+| **Paginação com rolagem** | Navegue por páginas (`1 … 4 5 [6] 7 8 … 120`); cada página traz até 96 papéis, que vão entrando conforme você rola |
+| **Filtro de irritabilidade** | Só papéis escuros, em todos os monitores de uma vez; a lua 🌙 marca os que passam no filtro (veja a seção acima) |
+| **Só escuros (catálogo)** | Busca no Wallhaven só papéis escuros, medidos pelo mesmo critério do filtro |
 | **Visualização em tela cheia** | Botão de olho (ou duplo clique) abre a imagem original em tela cheia, com ← → para navegar, "Baixar" e "Baixar e aplicar" |
 | **Baixar ou baixar e aplicar** | Micro botão de download em cada miniatura, ou "Baixar" para alimentar a pasta de destino sem mexer em nenhum monitor |
 | **Sem downloads repetidos** | Papéis já baixados ganham o selo "✓ Baixado" e nunca são baixados de novo |
@@ -36,17 +52,19 @@ Este app nasceu da necessidade real de ter **três monitores** (1440×900, 1920�
 
 ## Demonstração
 
+> As demonstrações usam papéis de parede de cores lisas, criados para isso. No GIF do catálogo, as miniaturas do Wallhaven aparecem pixeladas de propósito: as imagens pertencem aos seus autores.
+
 ### Monitores — um papel de parede para cada tela
 ![Monitores](docs/demo-monitores.gif)
-*Escolha o monitor, veja o papel atual e reaplique o último papel. Cada tela é independente.*
+*Escolha o monitor, veja o papel atual, escolha uma imagem e aplique. Cada tela é independente.*
+
+### Pasta local — Filtro de irritabilidade e apresentação de slides
+![Pasta local](docs/demo-pastalocal.gif)
+*As imagens escuras têm a lua 🌙. Ligue o Filtro de irritabilidade para ficar só com elas, marque as que quiser, inicie a apresentação e troque na hora com "Trocar agora".*
 
 ### Catálogo Wallhaven — só o que cabe no monitor
 ![Catálogo](docs/demo-catalogo.gif)
-*Escolha tags na lista (ou digite uma): cada uma vira uma etiqueta com X e a busca traz só papéis que têm todas. Só aparecem imagens com a proporção e a resolução do monitor escolhido.*
-
-### Pasta local — apresentação de slides por monitor
-![Pasta local](docs/demo-pastalocal.gif)
-*Desmarque qualquer imagem para tirá-la da apresentação (mesmo com ela em andamento); marque de novo para devolvê-la. Defina o intervalo, inicie e troque na hora com "Trocar agora".*
+*Pesquise, role para carregar mais papéis e ligue "Só escuros" para ver só os que servem no Filtro de irritabilidade. Só aparecem imagens com a proporção e a resolução do monitor escolhido.*
 
 ---
 
