@@ -205,7 +205,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     /// <summary>Encerra o app de vez (as apresentações em andamento voltam sozinhas na próxima vez que ele abrir).</summary>
     public RelayCommand ExitCommand { get; }
 
-    /// <summary>Transição "fade para preto" em toda troca de papel (apresentação e aplicações à mão).</summary>
+    /// <summary>Transição suave (fade-out/fade-in) em toda troca de papel (apresentação e aplicações à mão).</summary>
     public bool FadeEnabled
     {
         get => _fadeEnabled;
@@ -219,7 +219,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Duração do fade para preto, em segundos (valores fora de 0,2 a 3 são ignorados).</summary>
+    /// <summary>Duração da transição, em segundos (valores fora de 0,2 a 3 são ignorados).</summary>
     public double? FadeSeconds
     {
         get => _fadeSeconds;

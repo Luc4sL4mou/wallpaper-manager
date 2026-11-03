@@ -1110,7 +1110,7 @@
                     <ui:TextBlock Margin="0,24,0,10" FontTypography="Subtitle" Text="Transição entre papéis de parede" />
                     <ui:Card Padding="20">
                         <StackPanel>
-                            <CheckBox Content="Fade para preto ao trocar o papel de parede" IsChecked="{Binding Settings.FadeEnabled}" />
+                            <CheckBox Content="Transição suave (fade-out e fade-in) ao trocar o papel de parede" IsChecked="{Binding Settings.FadeEnabled}" />
                             <WrapPanel Margin="28,8,0,0">
                                 <ui:TextBlock Margin="0,0,10,0" VerticalAlignment="Center" Text="Duração da transição:" />
                                 <ui:NumberBox Width="130" VerticalAlignment="Center" Minimum="0.2" Maximum="3" SmallChange="0.1" LargeChange="0.5"
@@ -1121,7 +1121,7 @@
                             </WrapPanel>
                             <ui:TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12"
                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                          Text="O Windows troca o papel de parede de uma vez só. Para suavizar, o app escurece a área de trabalho do monitor, troca o papel por baixo e clareia de novo (suas janelas não são cobertas). Vale para toda troca: a apresentação de slides e quando você aplica um papel pelas abas Monitores, Catálogo ou Pasta local. É pulada sozinha quando uma janela cobre o monitor (jogo em tela cheia, programa maximizado)." />
+                                          Text="O Windows troca o papel de parede de uma vez só. Para suavizar, o app fotografa a área de trabalho do monitor, troca o papel por baixo da foto e faz a foto sumir aos poucos: o papel antigo desaparece enquanto o novo surge (suas janelas não são cobertas). Vale para toda troca: a apresentação de slides e quando você aplica um papel pelas abas Monitores, Catálogo ou Pasta local. É pulada sozinha quando uma janela cobre o monitor (jogo em tela cheia, programa maximizado)." />
                         </StackPanel>
                     </ui:Card>
 

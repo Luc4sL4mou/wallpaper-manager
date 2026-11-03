@@ -48,7 +48,7 @@ public sealed class MainViewModel : ViewModelBase
         _settingsService = settingsService;
         _localFolderService = localFolderService;
 
-        // Toda troca de papel passa pelo "fader": fade para preto (se ligado nas Configurações), em todas as abas
+        // Toda troca de papel passa pelo "fader": transição suave (se ligada nas Configurações), em todas as abas
         _fader = new WallpaperFader(wallpaperService, settingsService);
 
         Catalog = new CatalogViewModel(wallhavenService, downloadService, _fader, settingsService, Monitors);

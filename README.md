@@ -41,7 +41,7 @@ Mostra e usa **só papéis de parede escuros**, com pouca área muito clara, par
 | **Regra de compatibilidade** | Proporção (tolerância 1%) e resolução (largura e altura ≥ a do monitor) verificadas antes de exibir, antes de baixar e antes de aplicar |
 | **Pasta local** | Usa uma pasta do seu PC como fonte; todas as imagens numa lista só, com rolagem infinita; respeita a mesma regra de dimensões |
 | **Apresentação de slides** | Por monitor, intervalo configurável, ordem aleatória ou sequencial, seleção por imagem ou pasta inteira; desmarque qualquer imagem para tirá-la da apresentação, até com ela em andamento |
-| **Transição** | Fade para preto rápido em toda troca de papel (apresentação e aplicações à mão); só a área de trabalho escurece, as janelas abertas não são cobertas |
+| **Transição** | Fade-out do papel antigo e fade-in do novo, ao mesmo tempo, em toda troca de papel (apresentação e aplicações à mão); só a área de trabalho é animada, as janelas abertas não são cobertas |
 | **Segundo plano** | Roda em segundo plano com ícone na bandeja do sistema; fechar a janela não encerra o app |
 | **Inicia com o Windows** | Registra-se no logon automaticamente; ao iniciar no boot, fica só na bandeja e retoma as apresentações |
 | **Instância única** | Abrir o atalho com o app já rodando traz a janela de volta em vez de abrir uma segunda cópia |

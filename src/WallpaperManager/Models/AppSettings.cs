@@ -62,10 +62,10 @@ public sealed class AppSettings
     /// </summary>
     public List<string> DownloadedFiles { get; set; } = new();
 
-    /// <summary>Transição "fade para preto" ao trocar o papel (apresentação e aplicações à mão).</summary>
+    /// <summary>Transição suave (fade-out do papel antigo, fade-in do novo) ao trocar o papel (apresentação e aplicações à mão).</summary>
     public bool SlideshowFade { get; set; } = true;
 
-    /// <summary>Duração do fade para preto (escurecer + clarear), em segundos.</summary>
+    /// <summary>Duração da transição, em segundos.</summary>
     public double TransitionSeconds { get; set; } = 0.6;
 
     /// <summary>Último papel aplicado por monitor; a chave é o ID do dispositivo.</summary>

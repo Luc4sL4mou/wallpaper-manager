@@ -16,7 +16,7 @@ public sealed class LocalFolderViewModel : ViewModelBase
     private const int ThumbnailDecodeWidth = 420;
 
     private readonly LocalFolderService _folderService;
-    private readonly WallpaperFader _wallpaperFader; // aplica com o fade para preto
+    private readonly WallpaperFader _wallpaperFader; // aplica com a transição suave (fade-out/fade-in)
     private readonly SettingsService _settingsService;
     private readonly SlideshowManager _slideshows;
     private readonly IReadOnlyList<MonitorItemViewModel> _allMonitors;

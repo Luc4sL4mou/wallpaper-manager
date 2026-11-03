@@ -1,28 +1,31 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using WallpaperManager.Models;
 
 namespace WallpaperManager.Services;
 
 /// <summary>
-/// Troca o papel de parede de um monitor com uma transição "fade para preto" (o Windows troca de uma vez só).
-/// Como funciona: uma janela preta sem borda, logo acima da área de trabalho (abaixo de todas as outras janelas),
-/// aparece aos poucos; com o monitor escuro, o papel é trocado por baixo; depois a janela some aos poucos.
-/// Não depende de fotografar a tela, então funciona em qualquer versão do Windows. Se a janela não puder ser
-/// criada, a troca acontece normalmente, sem animação. Vale para toda troca: apresentação e aplicações à mão.
-/// Deve ser chamada na thread da interface.
+/// Troca o papel de parede de um monitor com uma transição suave: o papel antigo some aos poucos (fade-out)
+/// enquanto o novo aparece (fade-in), já que o Windows troca de uma vez só.
+/// Como funciona: o app fotografa a área de trabalho do monitor e mostra a foto numa janela sem borda, logo acima
+/// da área de trabalho (abaixo de todas as outras janelas). Como a foto é idêntica ao que já está na tela, nada
+/// muda para o usuário. O papel é trocado por baixo dela e a foto vai sumindo, revelando o papel novo.
+/// Se a foto ou a janela não puderem ser criadas, a troca acontece normalmente, sem animação. Vale para toda
+/// troca: apresentação e aplicações à mão. Deve ser chamada na thread da interface.
 /// </summary>
 public sealed class WallpaperFader
 {
-    // Depois que o Windows confirma a troca, ele ainda leva um instante para desenhar o papel novo
-    private static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(250);
+    // Tempo para a foto chegar à tela antes de o papel ser trocado por baixo dela
+    private static readonly TimeSpan ShowDelay = TimeSpan.FromMilliseconds(60);
 
-    // Fatia do tempo configurado gasta para escurecer (o resto é para clarear, que pede mais calma)
-    private const double FadeOutShare = 0.4;
+    // Depois que o Windows confirma a troca, ele ainda leva um instante para desenhar o papel novo
+    private static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(300);
 
     private readonly WallpaperService _wallpaperService;
     private readonly SettingsService _settingsService;
@@ -34,7 +37,7 @@ public sealed class WallpaperFader
     }
 
     /// <summary>
-    /// Aplica a imagem no monitor, com o fade para preto se estiver ligado nas configurações e se fizer sentido.
+    /// Aplica a imagem no monitor, com a transição suave se estiver ligada nas configurações e se fizer sentido.
     /// A validação de compatibilidade acontece dentro do WallpaperService, como sempre.
     /// </summary>
     public async Task ApplyAsync(MonitorInfo monitor, string imagePath)
@@ -48,17 +51,16 @@ public sealed class WallpaperFader
             return;
         }
 
-        TimeSpan total = TimeSpan.FromSeconds(Math.Clamp(settings.TransitionSeconds, 0.2, 3));
-        TimeSpan fadeOut = total * FadeOutShare;
-        TimeSpan fadeIn = total - fadeOut;
+        TimeSpan duration = TimeSpan.FromSeconds(Math.Clamp(settings.TransitionSeconds, 0.2, 3));
 
-        BlackOverlay? overlay = null;
+        SnapshotOverlay? overlay = null;
         try
         {
-            overlay = BlackOverlay.TryCreate(monitor);
+            overlay = SnapshotOverlay.TryCreate(monitor);
             if (overlay is not null)
             {
-                await overlay.AnimateAsync(1, fadeOut);
+                await Dispatcher.Yield(DispatcherPriority.Render);
+                await Task.Delay(ShowDelay);
             }
         }
         catch (Exception ex)
@@ -74,7 +76,7 @@ public sealed class WallpaperFader
         }
         catch
         {
-            // A troca falhou: some com o preto na hora, para o usuário não ficar com o monitor escuro
+            // A troca falhou: some com a foto na hora (ela mostra o papel antigo, que continua valendo)
             overlay?.Dispose();
             throw;
         }
@@ -87,7 +89,7 @@ public sealed class WallpaperFader
         try
         {
             await Task.Delay(SettleDelay);
-            await overlay.AnimateAsync(0, fadeIn);
+            await overlay.FadeOutAsync(duration);
         }
         catch (Exception ex)
         {
@@ -100,29 +102,40 @@ public sealed class WallpaperFader
     }
 
     /// <summary>
-    /// A janela preta da transição: sem borda, sem foco, transparente ao mouse, logo acima da área de trabalho.
+    /// A janela da transição: mostra a foto da área de trabalho tirada antes da troca. Sem borda, sem foco,
+    /// transparente ao mouse, logo acima da área de trabalho.
     /// </summary>
-    private sealed class BlackOverlay : IDisposable
+    private sealed class SnapshotOverlay : IDisposable
     {
         private const uint SwpNoActivate = 0x0010, SwpShowWindow = 0x0040;
         private const int WmNcHitTest = 0x0084, HtTransparent = -1;
         private const int GwHwndPrev = 3, GwlExStyle = -20;
         private const int WsExTopmost = 0x8;
+        private const int SrcCopy = 0x00CC0020;
 
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong(IntPtr hwnd, int index);
 
-        private readonly HwndSource _source;
-        private readonly Rectangle _black;
+        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+        [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+        [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int w, int h);
+        [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+        [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dest, int x, int y, int w, int h, IntPtr src, int sx, int sy, int rop);
+        [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
 
-        private BlackOverlay(HwndSource source, Rectangle black)
+        private readonly HwndSource _source;
+        private readonly Image _snapshot;
+
+        private SnapshotOverlay(HwndSource source, Image snapshot)
         {
             _source = source;
-            _black = black;
+            _snapshot = snapshot;
         }
 
-        public static BlackOverlay? TryCreate(MonitorInfo monitor)
+        public static SnapshotOverlay? TryCreate(MonitorInfo monitor)
         {
             IntPtr desktop = DesktopCapture.FindDesktopWindow();
             if (desktop == IntPtr.Zero)
@@ -140,8 +153,20 @@ public sealed class WallpaperFader
                 height -= 1;
             }
 
-            // Começa invisível (opacidade 0) e vai escurecendo
-            var black = new Rectangle { Fill = Brushes.Black, Opacity = 0 };
+            if (width <= 0 || height <= 0)
+            {
+                return null;
+            }
+
+            // A foto inclui os ícones da área de trabalho e as janelas abertas por cima; como a janela da transição
+            // fica abaixo das janelas do usuário, só a parte da área de trabalho aparece de fato
+            BitmapSource? photo = CaptureScreen(x, y, width, height);
+            if (photo is null)
+            {
+                return null;
+            }
+
+            var snapshot = new Image { Source = photo, Stretch = Stretch.Fill };
 
             // Janela "popup" com fundo transparente que nasce ESCONDIDA: assim ela é posicionada na ordem certa
             // antes de aparecer, sem nem por um instante ficar acima das janelas do usuário.
@@ -153,10 +178,10 @@ public sealed class WallpaperFader
                 PositionY = y,
                 Width = width,
                 Height = height,
-                UsesPerPixelTransparency = true,                       // a opacidade do retângulo vale na tela
+                UsesPerPixelTransparency = true,                       // a opacidade da foto vale na tela
             };
 
-            var source = new HwndSource(parameters) { RootVisual = black };
+            var source = new HwndSource(parameters) { RootVisual = snapshot };
             source.AddHook(HitTestHook);
 
             // Logo ACIMA da área de trabalho = logo abaixo da janela que estiver imediatamente acima dela
@@ -170,7 +195,46 @@ public sealed class WallpaperFader
                 return null;
             }
 
-            return new BlackOverlay(source, black);
+            return new SnapshotOverlay(source, snapshot);
+        }
+
+        /// <summary>Fotografa um retângulo da tela (em pixels do desktop virtual).</summary>
+        private static BitmapSource? CaptureScreen(int x, int y, int width, int height)
+        {
+            IntPtr screen = GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            IntPtr memory = IntPtr.Zero, bitmap = IntPtr.Zero;
+            try
+            {
+                memory = CreateCompatibleDC(screen);
+                bitmap = CreateCompatibleBitmap(screen, width, height);
+                if (memory == IntPtr.Zero || bitmap == IntPtr.Zero)
+                {
+                    return null;
+                }
+
+                IntPtr previous = SelectObject(memory, bitmap);
+                bool copied = BitBlt(memory, 0, 0, width, height, screen, x, y, SrcCopy);
+                SelectObject(memory, previous);
+                if (!copied)
+                {
+                    return null;
+                }
+
+                BitmapSource photo = Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                photo.Freeze();
+                return photo;
+            }
+            finally
+            {
+                if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+                if (memory != IntPtr.Zero) DeleteDC(memory);
+                ReleaseDC(IntPtr.Zero, screen);
+            }
         }
 
         // O mouse atravessa a janela: nada muda no comportamento da área de trabalho
@@ -185,17 +249,17 @@ public sealed class WallpaperFader
             return IntPtr.Zero;
         }
 
-        /// <summary>Leva o preto até a opacidade pedida (1 = monitor todo escuro, 0 = some).</summary>
-        public Task AnimateAsync(double opacity, TimeSpan duration)
+        /// <summary>Faz a foto do papel antigo sumir aos poucos, revelando o papel novo por baixo.</summary>
+        public Task FadeOutAsync(TimeSpan duration)
         {
             var finished = new TaskCompletionSource();
-            var animation = new DoubleAnimation(opacity, duration)
+            var animation = new DoubleAnimation(0, duration)
             {
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
                 FillBehavior = FillBehavior.HoldEnd,
             };
             animation.Completed += (_, _) => finished.TrySetResult();
-            _black.BeginAnimation(UIElement.OpacityProperty, animation);
+            _snapshot.BeginAnimation(UIElement.OpacityProperty, animation);
 
             // Segurança: se a animação não avisar que terminou (ex.: janela destruída), não trava a troca
             return Task.WhenAny(finished.Task, Task.Delay(duration + TimeSpan.FromSeconds(1)));

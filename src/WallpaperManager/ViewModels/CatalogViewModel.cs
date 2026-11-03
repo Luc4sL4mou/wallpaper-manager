@@ -28,7 +28,7 @@ public sealed class CatalogViewModel : ViewModelBase
 {
     private readonly WallhavenService _wallhavenService;
     private readonly DownloadService _downloadService;
-    private readonly WallpaperFader _wallpaperFader; // aplica com o fade para preto
+    private readonly WallpaperFader _wallpaperFader; // aplica com a transição suave (fade-out/fade-in)
     private readonly SettingsService _settingsService;
     private readonly IReadOnlyList<MonitorItemViewModel> _allMonitors;
     private CancellationTokenSource? _applyCts;
